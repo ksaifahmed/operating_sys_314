@@ -66,8 +66,13 @@ cd $parent_dir
 extensions_list=()
 ex_count=0
 curr_ext=""
-for file in *.*;
+other="no"
+for file in *;
 do
+	if [[ $file != *.* ]]; then
+		other="yes"
+		continue
+	fi	
 	IFS='.'; 
 	split=($file); 
 	unset IFS;
@@ -79,11 +84,17 @@ do
         ex_count=$((ex_count+1))
 done
 
-# creating and moving the files to subdirectories
+# arranging the files in subdirectories
 for ext in "${extensions_list[@]}";
 do
-	echo $ext
+	mkdir $ext
+	find . -name "*.$ext" -exec mv -t "./$ext" {} +
 done
+
+if [[ $other == "yes" ]]; then
+	mkdir "others"
+	find . -type f -name "*" -exec mv -t "./others" {} +
+fi
 
 
 
