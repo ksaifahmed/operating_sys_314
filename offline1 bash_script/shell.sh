@@ -1,7 +1,7 @@
 #!/bin/bash
 # prints user guide
 print_manual() {
-	echo "use command like this: script.sh directory filename"
+	echo -e "use command like this: \"./script.sh [working_directory] [path_to_filename]\""
 	echo "if directory is not provided, root is assumed"
 }
 
@@ -54,16 +54,36 @@ fi
 rm -r -f "../output_dir"
 mkdir "../output_dir"
 parent_dir="../output_dir"
-find $rootdir -type f -exec cp {} $parent_dir \;
+find "$rootdir" -type f -exec cp {} "$parent_dir" \;
 for var in "${ignored_list[@]}"
 do
-	echo $var
-	find $parent_dir -name "*.$var" -type f -delete
+	find "$parent_dir" -name "*.$var" -type f -delete
 done
-echo "copied files to $parent_dir"
+echo "copied files to output_dir in parent directory"
 
+# getting all the unique extensions
+cd $parent_dir
+extensions_list=()
+ex_count=0
+curr_ext=""
+for file in *.*;
+do
+	IFS='.'; 
+	split=($file); 
+	unset IFS;
+	if [[ "$curr_ext" == "${split[1]}" ]]; then
+		continue
+	fi
+        curr_ext=${split[1]}
+        extensions_list[$ex_count]=$curr_ext
+        ex_count=$((ex_count+1))
+done
 
-
+# creating and moving the files to subdirectories
+for ext in "${extensions_list[@]}";
+do
+	echo $ext
+done
 
 
 
