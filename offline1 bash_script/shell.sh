@@ -119,6 +119,15 @@ do
 		cd ../..
 		path_to_file=`find "$find_loc" -type f -name "$file"`
 		# echo -e "$path_to_file"
+		
+		if [[ "$path_to_file" =~ $'\n' ]]; then
+			IFS=$'\n'; 
+			split=($path_to_file); 
+			unset IFS;
+			path_to_file="${split[-1]}"
+			# echo "$path_to_file- is da best"
+		fi		
+		
 		cd "output_dir/$ext"
 		echo "$path_to_file" >> "desc_$ext.txt"
 	done
@@ -135,8 +144,17 @@ if [[ $other == "yes" ]]; then
 		continue
 		fi
 		cd ../..
-		path_to_file=`find "$find_loc" -type f -name "$file"`
-		# echo -e "x $path_to_file x"
+		path_to_file=`find "$find_loc" -type f -name "$file" -printf "%p\n"`
+		# echo "$path_to_file"
+		
+		if [[ "$path_to_file" =~ $'\n' ]]; then
+			IFS=$'\n'; 
+			split=($path_to_file); 
+			unset IFS;
+			path_to_file="${split[-1]}"
+			# echo "$path_to_file- is da best"
+		fi
+		
 		cd "output_dir/others"
 		echo "$path_to_file" >> "desc_others.txt"
 	done
