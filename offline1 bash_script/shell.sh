@@ -6,6 +6,8 @@ print_manual() {
 }
 
 
+
+
 # checking whether cmd line arg is provided
 if [ $# -eq 0 ]; then
 	echo "No arguments provided!"
@@ -43,14 +45,10 @@ if test -f "$inputfile"; then
 	echo -e "\nIgnored types in \"$inputfile\":"
 	while IFS= read -r line || [ -n "$line" ] ;  # OR condition checks if EOF at the end of line
 	do
-		echo "*.$line"
-		IFS=$'\n'; 
-		split=($line);
-		unset IFS;
-		ig="${split[0]}"		
-		ignored_list[$ignore_ext_count]="$line"
+		line=`echo $line | sed 's/[^0-9A-Za-z]*//g'`;  #escaping SOME CHARACTERS!!!
+		echo "*.$line"		
+		ignored_list[$ignore_ext_count]=$line
 		ignore_ext_count=$((ignore_ext_count+1))
-		
 	done < "$inputfile"	
 	echo -e "\n"
 else
@@ -87,12 +85,11 @@ for ext in "${ignored_list[@]}"
 do
 	#echo -e "*.$ext\ta"
 	#pwd
-	find "$parent_dir" -type f -name "*.$ext" -delete
+	find "$parent_dir" -type f -name "*.$ext" -exec rm -rf {} \;
 done
 echo "copied files to output_dir in parent directory!"
 
-find "$parent_dir" -type f -name "*.mp3" -delete
-
+#find "$parent_dir" -type f -name "*.mp3" -delete
 
 # getting all the extensions
 echo "starting to arrange files...."
