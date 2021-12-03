@@ -41,11 +41,16 @@ declare -a ignored_list
 ignore_ext_count=0
 if test -f "$inputfile"; then
 	echo -e "\nIgnored types in \"$inputfile\":"
-	while IFS= read line || [ -n "$line" ] ;  # OR condition checks if EOF at the end of line
+	while IFS= read -r line || [ -n "$line" ] ;  # OR condition checks if EOF at the end of line
 	do
-		echo "$line" 
-		ignored_list[$ignore_ext_count]=$line
-	  	ignore_ext_count=$((ignore_ext_count+1))
+		echo "*.$line"
+		IFS=$'\n'; 
+		split=($line);
+		unset IFS;
+		ig="${split[0]}"		
+		ignored_list[$ignore_ext_count]="$line"
+		ignore_ext_count=$((ignore_ext_count+1))
+		
 	done < "$inputfile"	
 	echo -e "\n"
 else
@@ -77,15 +82,19 @@ count_array["ignored"]="$ignored_file_count"
 
 
 # deleting ignored files
-for var in "${ignored_list[@]}"
+find_loc="$(basename "$rootdir")"
+for ext in "${ignored_list[@]}"
 do
-	find "$parent_dir" -name "*.$var" -type f -delete
+	#echo -e "*.$ext\ta"
+	#pwd
+	find "$parent_dir" -type f -name "*.$ext" -delete
 done
 echo "copied files to output_dir in parent directory!"
 
+find "$parent_dir" -type f -name "*.mp3" -delete
 
 
-# getting all the unique extensions
+# getting all the extensions
 echo "starting to arrange files...."
 cd $parent_dir
 extensions_list=()
@@ -108,7 +117,8 @@ do
         extensions_list[$ex_count]=$curr_ext
         ex_count=$((ex_count+1))
 done
-
+# making the array unique
+extensions_list=($(echo "${extensions_list[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
 
 
 # arranging the files in subdirectories
@@ -126,7 +136,6 @@ fi
 
 
 # writing the paths into file
-find_loc="$(basename "$rootdir")"
 for ext in "${extensions_list[@]}";
 do
 	touch "./$ext/desc_$ext.txt"
@@ -212,37 +221,15 @@ echo "done arranging files with path descriptions!"
 # done
 
 
-
 # csv tasks
+cd ..
+touch "output.csv"
+echo "file_type,no_of_files" > "output.csv"
+for key in ${!count_array[@]}; do
+	echo "${key},${count_array[${key}]}" >> "output.csv"
+done
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# Script End Message
 echo -e "script terminated!\n"
