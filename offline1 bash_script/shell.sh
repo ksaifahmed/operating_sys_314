@@ -38,19 +38,20 @@ fi
 
 # printing the ignored filetypes
 declare -a ignored_list
-ignore_count=0
+ignore_ext_count=0
 if test -f "$inputfile"; then
 	echo -e "\nIgnored types in \"$inputfile\":"
 	while IFS= read line || [ -n "$line" ] ;  # OR condition checks if EOF at the end of line
 	do
 		echo "$line" 
-		ignored_list[$ignore_count]=$line
-	  	ignore_count=$((ignore_count+1))
+		ignored_list[$ignore_ext_count]=$line
+	  	ignore_ext_count=$((ignore_ext_count+1))
 	done < "$inputfile"	
 	echo -e "\n"
 else
 	echo "$inputfile DOES NOT exist.....Try Again!"
 fi
+
 
 
 
@@ -60,6 +61,22 @@ rm -r -f "../output_dir"
 mkdir "../output_dir"
 parent_dir="../output_dir"
 find "$rootdir" -type f -exec cp {} "$parent_dir" \;
+
+# ignored files count
+declare -A count_array # for CSV, contains count
+ignored_file_count=0
+for var in "${ignored_list[@]}";
+do
+	for file in ../output_dir/*.$var;
+	do
+		# echo "$file"
+		ignored_file_count=$((ignored_file_count+1))
+	done
+done
+count_array["ignored"]="$ignored_file_count"
+
+
+# deleting ignored files
 for var in "${ignored_list[@]}"
 do
 	find "$parent_dir" -name "*.$var" -type f -delete
@@ -114,6 +131,9 @@ for ext in "${extensions_list[@]}";
 do
 	touch "./$ext/desc_$ext.txt"
 	cd "$ext/"
+	count=0
+	
+	
 	for file in *.$ext;
 	do
 		cd ../..
@@ -129,20 +149,34 @@ do
 		fi		
 		
 		cd "output_dir/$ext"
+		
+		if [[ "$path_to_file" == "" ]]; then
+			continue # don't write if null
+		fi
+		
+		count=$((count+1))
 		echo "$path_to_file" >> "desc_$ext.txt"
 	done
+	
+	
+	count_array["$ext"]="$count"
+	# echo "$ext e $count" 
 	cd ..
 done
 
 if [[ $other == "yes" ]]; then
 	touch "./others/desc_others.txt"
 	cd "others/"
+	count=0
+	
+	
 	for file in *;
 	do	
 		# echo $file
 		if [[ $file == *.* ]]; then
-		continue
+		continue # skip if extensions
 		fi
+		
 		cd ../..
 		path_to_file=`find "$find_loc" -type f -name "$file" -printf "%p\n"`
 		# echo "$path_to_file"
@@ -156,16 +190,30 @@ if [[ $other == "yes" ]]; then
 		fi
 		
 		cd "output_dir/others"
+		
+		if [[ "$path_to_file" == "" ]]; then
+			continue # don't write if null
+		fi
+		
+		count=$((count+1))
 		echo "$path_to_file" >> "desc_others.txt"
 	done
+	
+	count_array["others"]="$count"
 	cd ..
 fi
 echo "done arranging files with path descriptions!"
 
 
 
-# csv file task
+# print the count
+# for key in ${!count_array[@]}; do
+#     echo ${key} ${count_array[${key}]}
+# done
 
+
+
+# csv tasks
 
 
 
