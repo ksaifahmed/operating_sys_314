@@ -11,7 +11,7 @@ sem_t kiosk_full;
 sem_t kiosk_mutex;
 
 //constants to be replaced by file i/o
-#define M 6
+#define M 2
 #define POISSON 1
 int gid_count = 0;
 
@@ -21,27 +21,13 @@ class Passenger{
     int id;
 
     public:
-        Passenger(bool, int);
-        bool is_vip();
-        int getID();
+        Passenger(bool v, int i){vip = v; id = i;}
+        bool is_vip(){ return vip; }
+        int getID(){ return id; }
 };
-
-Passenger::Passenger(bool v, int i)
-{
-    vip = v;
-    id = i;
-}
-
-bool Passenger::is_vip()
-{
-    return vip;
-}
-
-int Passenger::getID(){ return id; }
 
 
 //Waiting Lines
-queue<Passenger> kiosk_line;
 queue<Passenger> kiosks;
 
 void * SentToAirport(void * arg)
@@ -52,6 +38,7 @@ void * SentToAirport(void * arg)
     sem_wait(&kiosk_mutex);
 
     //push into kiosks here
+    cout << "Passenger " << pass.getID() <<" pushed" << endl;
     kiosks.push(pass);
 
     sem_post(&kiosk_mutex);
@@ -61,13 +48,13 @@ void * SentToAirport(void * arg)
 
 void * PassengerProducer(void * arg)
 {
-    while(1)
+    int i = 13;
+    while(i--)
     {
         sleep(POISSON);
         pthread_t temp;
         Passenger * pass = new Passenger(rand()%2, ++gid_count);
         pthread_create(&temp, NULL, SentToAirport, pass);
-        cout << "new passenger with id:" << pass -> getID() << ", status: "<< pass -> is_vip() << endl;
     }
 }
 
