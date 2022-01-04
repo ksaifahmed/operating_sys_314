@@ -14,12 +14,20 @@ sem_t * belt_sem_full;
 sem_t * belt_sem_emp;
 sem_t boarding_empty;
 sem_t boarding_full;
+sem_t skiosk_empty;
+sem_t skiosk_full;
 
 //locks aka mutex aka bin_sem
 sem_t kiosk_lock;
 sem_t io_lock;
 sem_t belt_lock;
 sem_t board_lock;
+sem_t skiosk_lock;
+
+pthread_mutex_t lr_count_lock;
+pthread_mutex_t rl_count_lock;
+pthread_mutex_t channel_lock;
+pthread_mutex_t left_side_empty;
 
 //constants to be replaced by file i/o
 #define POISSON 1
@@ -29,6 +37,7 @@ int w = 2, x = 2, y = 2, z = 2;
 //counters and id's
 int gid_count = 0, kiosk_id = 0;
 auto START_TIME = high_resolution_clock::now();
+int lr_count = 0, rl_count = 0;
 
 
 int get_sys_time()
@@ -56,12 +65,14 @@ class Passenger{
 queue<Passenger*> kiosks;
 queue<Passenger*> * belts;
 queue<Passenger*> board_officer;
+queue<Passenger*> skiosk;
 
 
 void * PassengerLifeCycle(void * arg);
 void * PassengerProducer(void * arg)
 {
-    while(1)
+    srand(time(NULL)); int i = 5;
+    while(i--)
     {
         sleep(POISSON);
         pthread_t passenger_t;
@@ -152,7 +163,7 @@ void sendToBoarding(Passenger * pass, string status)
 {
     sem_wait(&io_lock);
     cout << "Passenger " << pass->getID() << status <<" has started waiting to be boarded at time " << get_sys_time() << endl;
-    if(rand()%2 == 0) pass->loose_board_pass(); ///wadis wrong here? sfmaksfsjfnsjfnsjfsnfjsfeijgigis
+    if(rand()%2 == 0) pass->loose_board_pass();
     sem_post(&io_lock);
 
     sem_wait(&boarding_empty);
@@ -192,8 +203,95 @@ void check_and_board(string status)
     sem_post(&boarding_empty);
 }
 
+void LeftToRightVIP(Passenger * pass, string status)
+{
+    pthread_mutex_lock(&lr_count_lock);
+    lr_count++;
+    if(lr_count == 1){
+        pthread_mutex_lock(&left_side_empty);
+        pthread_mutex_lock(&channel_lock);
+    }
+    pthread_mutex_unlock(&lr_count_lock);
+
+    //passenger passed
+    sem_wait(&io_lock);
+    cout << "Passenger " << pass->getID() << status <<" has passed the VIP Channel(LR) at time  " << get_sys_time() << endl;
+    sem_post(&io_lock);
+
+    pthread_mutex_lock(&lr_count_lock);
+    lr_count--;
+    if(lr_count == 0){
+        pthread_mutex_unlock(&channel_lock);
+        pthread_mutex_unlock(&left_side_empty);
+    }
+    pthread_mutex_unlock(&lr_count_lock);
+}
+
+void RightToLeftVIP(Passenger * pass, string status)
+{
+    //block right-people when left-people exists
+    pthread_mutex_lock(&left_side_empty);
+    pthread_mutex_unlock(&left_side_empty);
+
+    pthread_mutex_lock(&rl_count_lock);
+    rl_count++;
+    if(rl_count == 1){
+        pthread_mutex_lock(&channel_lock);
+    }
+    pthread_mutex_unlock(&rl_count_lock);
+
+    //passenger passed
+    sem_wait(&io_lock);
+    cout << "Passenger " << pass->getID() << status <<" has passed the VIP Channel(RL) at time  " << get_sys_time() << endl;
+    sem_post(&io_lock);
+
+    pthread_mutex_lock(&rl_count_lock);
+    rl_count--;
+    if(rl_count == 0){
+        pthread_mutex_unlock(&channel_lock);
+    }
+    pthread_mutex_unlock(&rl_count_lock);
+}
+
+void sendToSpecialKiosk(Passenger * pass)
+{
+    sem_wait(&skiosk_empty);
+    sem_wait(&skiosk_lock);
+
+    //push into kiosks here
+    skiosk.push(pass);
+
+    sem_post(&skiosk_lock);
+    sem_post(&skiosk_full);
+}
+
+void startSpecialKioskOp(string status)
+{
+    //kiosk pop
+    sem_wait(&skiosk_full);
+    sem_wait(&skiosk_lock);
+
+    Passenger * p = skiosk.front();
+
+    sem_wait(&io_lock);
+    cout << "Passenger " << p->getID() << status << " has started self-check in at the special kiosk at time " << get_sys_time() << endl;
+    sem_post(&io_lock);
+
+    sleep(w);
+    skiosk.pop();
+
+    sem_wait(&io_lock);
+    p->get_another_pass();
+    cout << "Passenger " << p->getID() << status << " has finished check in special kiosk at time " << get_sys_time() << endl;
+    sem_post(&io_lock);
+
+    sem_post(&skiosk_lock);
+    sem_post(&skiosk_empty);
+}
+
 void * PassengerLifeCycle(void * arg)
 {
+    srand(time(NULL));
     string status = "";
     Passenger * pass = (Passenger *) arg;
     if(pass->is_vip()) status = " (VIP)";
@@ -213,11 +311,27 @@ void * PassengerLifeCycle(void * arg)
         int belt_no = rand()%N;
         sendToSecurity(pass, belt_no);
         startSecurityCheck(belt_no);
+    }else{
+        LeftToRightVIP(pass, status);
     }
 
     //boarding
-    sendToBoarding(pass, status);
-    check_and_board(status);
+    while(1)
+    {
+        sendToBoarding(pass, status);
+        check_and_board(status);
+        if(pass->has_pass()) break;
+
+        //else use VIP Channel to go RL
+        RightToLeftVIP(pass, status);
+
+        //special kiosk
+        sendToSpecialKiosk(pass);
+        startSpecialKioskOp(status);
+
+        //then use VIP Channel to go LR
+        LeftToRightVIP(pass, status);
+    }
 }
 
 void init_sem()
@@ -244,6 +358,17 @@ void init_sem()
     sem_init(&boarding_empty, 0, 1);
     sem_init(&boarding_full, 0, 0);
 
+    //special kiosk
+    sem_init(&skiosk_lock, 0, 1);
+    sem_init(&skiosk_empty, 0, 1);
+    sem_init(&skiosk_full, 0, 0);
+
+    //vip channel locks
+    pthread_mutex_init(&lr_count_lock, NULL);
+    pthread_mutex_init(&rl_count_lock, NULL);
+    pthread_mutex_init(&channel_lock, NULL);
+    pthread_mutex_init(&left_side_empty, NULL);
+
 }
 
 void init_pthreads()
@@ -257,7 +382,6 @@ void init_pthreads()
 
 int main()
 {
-    srand(time(NULL));
     belts = new queue<Passenger*>[N];
 
     init_sem();
@@ -266,4 +390,3 @@ int main()
 	pthread_exit(NULL);
     return 0;
 }
-
