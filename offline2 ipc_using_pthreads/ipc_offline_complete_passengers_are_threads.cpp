@@ -29,8 +29,11 @@ pthread_mutex_t rl_count_lock;
 pthread_mutex_t channel_lock;
 pthread_mutex_t left_side_empty;
 
-//constants to be replaced by file i/o
-#define POISSON 1
+//POISSON
+std::default_random_engine gen;
+std::poisson_distribution<int> poisson_dis(4);
+
+//default values to be replaced by file i/o
 int M = 2, N = 3, P = 3;
 int w = 2, x = 2, y = 2, z = 2;
 
@@ -71,10 +74,13 @@ queue<Passenger*> skiosk;
 void * PassengerLifeCycle(void * arg);
 void * PassengerProducer(void * arg)
 {
-    srand(time(NULL)); int i = 5;
-    while(i--)
+    srand(time(NULL));
+    int total_passengers = 5;
+    int sleeping_time;
+    while(1)
     {
-        sleep(POISSON);
+        sleeping_time = poisson_dis(gen);
+        sleep(sleeping_time);
         pthread_t passenger_t;
         bool status = false;
         if(rand()%2 == 0) status = true;
@@ -195,7 +201,7 @@ void check_and_board(string status)
     if(pass->has_pass())
         cout << "Passenger " << pass->getID() << status <<" has boarded the plane at time  " << get_sys_time() << endl;
     else
-        cout << "Passenger " << pass->getID() << status <<" has \tfailed to show the boarding pass at time  " << get_sys_time() << endl;
+        cout << "Passenger " << pass->getID() << status <<" has failed to show the boarding pass at time  " << get_sys_time() << endl;
     sem_post(&io_lock);
 
 
@@ -373,20 +379,28 @@ void init_sem()
 
 void init_pthreads()
 {
-	char * dummy_msg = "";
+    char * dummy_msg = "";
     pthread_t producer_t;
-	pthread_create(&producer_t, NULL, PassengerProducer, (void*)dummy_msg);
-
+    pthread_create(&producer_t, NULL, PassengerProducer, (void*)dummy_msg);
 }
 
 
 int main()
 {
+    freopen("input.txt", "r", stdin);
+    cin >> M >> N >> P;
+    cin >> w >> x >> y >> z;
+    cout << "====values:====\n";
+    cout << "M:" << M << ", N:" << N << ", P:" << P << ",\n";
+    cout << "w:" << w << ", x:" << x << ", y:" << y << ", z:" << z <<",\n";
+    cout << "===================\n";
+    fclose(stdin);
+
     belts = new queue<Passenger*>[N];
 
     init_sem();
     init_pthreads();
 
-	pthread_exit(NULL);
+    pthread_exit(NULL);
     return 0;
 }
