@@ -163,7 +163,7 @@ index 82fb982..f381ac4 100644
  void            swtch(struct context**, struct context*);
  
 diff --git a/proc.c b/proc.c
-index 806b1b1..e47b097 100644
+index 806b1b1..6267101 100644
 --- a/proc.c
 +++ b/proc.c
 @@ -88,6 +88,8 @@ allocproc(void)
@@ -295,7 +295,7 @@ index 806b1b1..e47b097 100644
  
  // Enter scheduler.  Must hold only ptable.lock
  // and have changed proc->state. Saves and restores
-@@ -532,3 +616,89 @@ procdump(void)
+@@ -532,3 +616,90 @@ procdump(void)
      cprintf("\n");
    }
  }
@@ -324,6 +324,7 @@ index 806b1b1..e47b097 100644
 +int getpinfo(struct pstat *proc_info)
 +{
 +  //if(proc_info == NULL) return -1;
++  if(argptr(0, (void*)&proc_info, sizeof(proc_info)) == -1) return -1;
 +  struct proc *p;
 +  int i;
 +

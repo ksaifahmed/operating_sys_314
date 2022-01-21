@@ -641,6 +641,7 @@ int settickets(int tickets)
 int getpinfo(struct pstat *proc_info)
 {
   //if(proc_info == NULL) return -1;
+  if(argptr(0, (void*)&proc_info, sizeof(proc_info)) == -1) return -1;
   struct proc *p;
   int i;
 
