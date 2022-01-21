@@ -322,8 +322,78 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
+
+//====================LOTTERY SCHEDULER========================
 void
 scheduler(void)
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+  c->proc = 0;
+  //uint init_ticks = 0;
+  
+  for(;;){
+    // Enable interrupts on this processor.
+    sti();
+
+    uint lottery = 0, total_tickets = 0;
+    uint cummulative_tickets = 0;
+
+    //GET TOTAL TICKETS
+    acquire(&ptable.lock);
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+    {
+      if(p->state != RUNNABLE)
+        continue;
+      total_tickets += p->tickets;
+    }
+    release(&ptable.lock);
+
+    //DO LOTTERY USING MURMUR_HASH2
+    if(total_tickets) lottery = murmur((void*)"1234", 4) % total_tickets;
+    //cprintf("total tickets: %d, lottery: %d\n", total_tickets, lottery);
+
+    // Loop over process table looking for process to run.
+    acquire(&ptable.lock);
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state != RUNNABLE)
+        continue;
+
+      //CHOOSE BASED ON LOTTERY
+      cummulative_tickets += p->tickets;
+      if(lottery > cummulative_tickets)
+        continue;
+
+      // Switch to chosen process
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+
+      acquire(&tickslock);
+      uint init_ticks = ticks; //INIT TICKS
+      release(&tickslock);
+
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
+
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+
+      acquire(&tickslock);
+      p->ticks += ticks - init_ticks; //ASSIGN TICKS
+      release(&tickslock);
+
+      c->proc = 0;
+      break;
+    }
+    release(&ptable.lock);
+
+  }
+}
+
+///OG SCHEDULER
+void
+scheduler_og(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
@@ -367,6 +437,7 @@ scheduler(void)
 
   }
 }
+//==============================================================================
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores

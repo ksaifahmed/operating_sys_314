@@ -1,13 +1,6 @@
 #include "types.h"
 #include "stat.h"
 #include "user.h"
-//#include "defs.h"
-
-
-int random_(int seed, int a, int c, int m){
-  seed = (a * seed + c) % m ;
-  return seed % 77;
-}
 
 
 int main(int argc, char *argv[])
@@ -21,6 +14,7 @@ int main(int argc, char *argv[])
     double x = 1.01012;
     struct pstat *proc_info = (struct pstat*) malloc(sizeof(struct pstat));
     int alpha = 0;
+    settickets(10);
 
     //parent creates first child
     id = fork();
@@ -64,7 +58,6 @@ int main(int argc, char *argv[])
     if(!id){
         if(alpha) settickets(30);
         while(1)
-
         {
             for(j = 0; j < 214748000; j++)
                 x += 0.0131*45.445;
