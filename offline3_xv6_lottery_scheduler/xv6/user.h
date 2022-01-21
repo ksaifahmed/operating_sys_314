@@ -29,6 +29,7 @@ int uptime(void);
 //offline
 int settickets(int);
 int getpinfo(struct pstat *);
+unsigned int murmur(const void * key, int len);
 
 // ulib.c
 int stat(const char*, struct stat*);

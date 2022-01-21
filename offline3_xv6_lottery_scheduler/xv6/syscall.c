@@ -106,6 +106,7 @@ extern int sys_write(void);
 extern int sys_uptime(void);
 extern int sys_settickets(void); //offline
 extern int sys_getpinfo(void); //offline
+extern int sys_murmur(void); //offline
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -131,6 +132,7 @@ static int (*syscalls[])(void) = {
 [SYS_close]   sys_close,
 [SYS_settickets] sys_settickets, //offline
 [SYS_getpinfo] sys_getpinfo, //offline
+[SYS_murmur] sys_murmur, //offline
 };
 
 void

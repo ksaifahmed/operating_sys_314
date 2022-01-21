@@ -1,0 +1,431 @@
+diff --git a/Makefile b/Makefile
+index 09d790c..4625d05 100644
+--- a/Makefile
++++ b/Makefile
+@@ -51,7 +51,7 @@ TOOLPREFIX := $(shell if i386-jos-elf-objdump -i 2>&1 | grep '^elf32-i386$$' >/d
+ endif
+ 
+ # If the makefile can't find QEMU, specify its path here
+-# QEMU = qemu-system-i386
++QEMU = qemu-system-i386
+ 
+ # Try to infer the correct QEMU
+ ifndef QEMU
+@@ -181,6 +181,9 @@ UPROGS=\
+ 	_usertests\
+ 	_wc\
+ 	_zombie\
++	_set\
++	_listp\
++	_launchp\
+ 
+ fs.img: mkfs README $(UPROGS)
+ 	./mkfs fs.img README $(UPROGS)
+@@ -217,7 +220,7 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
+ 	then echo "-gdb tcp::$(GDBPORT)"; \
+ 	else echo "-s -p $(GDBPORT)"; fi)
+ ifndef CPUS
+-CPUS := 2
++CPUS := 1
+ endif
+ QEMUOPTS = -drive file=fs.img,index=1,media=disk,format=raw -drive file=xv6.img,index=0,media=disk,format=raw -smp $(CPUS) -m 512 $(QEMUEXTRA)
+ 
+@@ -249,7 +252,7 @@ qemu-nox-gdb: fs.img xv6.img .gdbinit
+ 
+ EXTRA=\
+ 	mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
+-	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c zombie.c\
++	ln.c ls.c mkdir.c rm.c set.c launchp.c listp.c stressfs.c usertests.c wc.c zombie.c\
+ 	printf.c umalloc.c\
+ 	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
+ 	.gdbinit.tmpl gdbutil\
+diff --git a/README b/README
+index 923e0a4..ca50a99 100644
+--- a/README
++++ b/README
+@@ -1,3 +1,86 @@
++Lottery Scheduling in Xv6 by ksaifahmed
++CSE 314
++3rd offline/assignment
++
++==========================================================================================
++									SPECIFICATIONS
++In this offline, you'll be putting a new scheduler into xv6. It is called a lottery scheduler, and the full version is described in this chapter of the online book; you'll be building a simpler one. The basic idea is simple: assign each running process a slice of the processor based on the number of tickets it has; the more tickets a process has, the more it runs. Each time slice, a randomized lottery determines the winner of the lottery; that winning process is the one that runs for that time slice.
++
++ 
++
++You'll need two new system calls to implement this scheduler. The first is int settickets(int number), which sets the number of tickets of the calling process. By default, each process should get one ticket; calling this routine makes it such that a process can raise the number of tickets it receives, and thus receive a higher proportion of CPU cycles. This routine should return 0 if successful, and -1 otherwise (if, for example, the caller passes in a number less than one).
++
++
++The second is int getpinfo(struct pstat *). This routine returns some information about all running processes, including how many times each has been chosen to run and the process ID of each. You can use this system call to build a variant of the command line program ps, which can then be called to see what is going on. The structure pstat is defined below; note, you cannot change this structure and must use it exactly as-is. This routine should return 0 if successful, and -1 otherwise (if, for example, a bad or NULL pointer is passed into the kernel).
++
++
++Most of the code for the scheduler is quite localized and can be found in proc.c; the associated header file, proc.h is also quite useful to examine. To change the scheduler, not much needs to be done; study its control flow and then try some small changes.
++
++
++You'll need to assign tickets to a process when it is created. Specifically, you'll need to make sure a child process inherits the same number of tickets as its parents. Thus, if the parent has 10 tickets, and calls fork() to create a child process, the child should also get 10 tickets.
++
++
++You'll also need to figure out how to generate random numbers in the kernel; some searching should lead you to a simple pseudo-random number generator, which you can then include in the kernel and use as appropriate.
++
++
++Finally, you'll need to understand how to fill in the structure pstat in the kernel and pass the results to userspace. The structure should look like what you see here, in a file you'll have to include called pstat.h:
++
++
++
++
++#ifndef _PSTAT_H_
++
++#define _PSTAT_H_
++
++
++#include "param.h"
++
++
++struct pstat {
++
++  int inuse[NPROC];   // whether this slot of the process table is in use (1 or 0)
++
++  int tickets[NPROC]; // the number of tickets this process has
++
++  int pid[NPROC];     // the PID of each process
++
++  int ticks[NPROC];   // the number of ticks each process has accumulated
++
++};
++
++
++#endif // _PSTAT_H_
++
++
++Good examples of how to pass arguments into the kernel are found in existing system calls. In particular, follow the path of read(), which will lead you to sys_read(), which will show you how to use argptr() (and related calls) to obtain a pointer that has been passed into the kernel. Note how careful the kernel is with pointers passed from userspace -- they are a security threat(!), and thus must be checked very carefully before usage.
++
++
++For this particular offline set CPUS =1 in the makefile of xv6.
++
++
++
++Submission Guideline: (Deadline 23 January, 8 AM)
++
++Start with a fresh copy of xv6 from the original repository. Make necessary changes for this offline. Don't commit. You can also create any additional files if need be. Then create a patch using the command line interface:
++
++git diff HEAD > studentID.patch
++
++Where studentID = your own six-digit student ID (e.g., 1505006). Just submit the patch file. In the lab, during evaluation, we will start with a fresh copy of xv6 and apply your patch using the command line:
++
++git apply studentID.patch
++
++
++
++
++
++
++
++
++
++
++=====================================================================
++						ORIGINAL README FROM REPO
++
+ NOTE: we have stopped maintaining the x86 version of xv6, and switched
+ our efforts to the RISC-V version
+ (https://github.com/mit-pdos/xv6-riscv.git)
+@@ -48,4 +131,4 @@ To build xv6 on an x86 ELF machine (like Linux or FreeBSD), run
+ will need to install a cross-compiler gcc suite capable of producing
+ x86 ELF binaries (see https://pdos.csail.mit.edu/6.828/).
+ Then run "make TOOLPREFIX=i386-jos-elf-". Now install the QEMU PC
+-simulator and run "make qemu".
+\ No newline at end of file
++simulator and run "make qemu".
+diff --git a/defs.h b/defs.h
+index 82fb982..f381ac4 100644
+--- a/defs.h
++++ b/defs.h
+@@ -10,6 +10,8 @@ struct sleeplock;
+ struct stat;
+ struct superblock;
+ 
++#include "pstat.h"
++
+ // bio.c
+ void            binit(void);
+ struct buf*     bread(uint, uint);
+@@ -121,6 +123,11 @@ int             wait(void);
+ void            wakeup(void*);
+ void            yield(void);
+ 
++//offline
++int 			settickets(int);
++int             getpinfo(struct pstat*);
++unsigned int    murmur(const void * key, int len);
++
+ // swtch.S
+ void            swtch(struct context**, struct context*);
+ 
+diff --git a/proc.c b/proc.c
+index 806b1b1..e1d3c05 100644
+--- a/proc.c
++++ b/proc.c
+@@ -88,6 +88,8 @@ allocproc(void)
+ found:
+   p->state = EMBRYO;
+   p->pid = nextpid++;
++  p->tickets = 1; //offline -> default tickets
++  p->ticks = 0;
+ 
+   release(&ptable.lock);
+ 
+@@ -198,6 +200,7 @@ fork(void)
+   }
+   np->sz = curproc->sz;
+   np->parent = curproc;
++  np->tickets = curproc->tickets; //offline -> child inherits tickets from parents
+   *np->tf = *curproc->tf;
+ 
+   // Clear %eax so that fork returns 0 in the child.
+@@ -325,6 +328,7 @@ scheduler(void)
+   struct proc *p;
+   struct cpu *c = mycpu();
+   c->proc = 0;
++  //uint init_ticks = 0;
+   
+   for(;;){
+     // Enable interrupts on this processor.
+@@ -343,11 +347,20 @@ scheduler(void)
+       switchuvm(p);
+       p->state = RUNNING;
+ 
++      acquire(&tickslock);
++      uint init_ticks = ticks;
++      release(&tickslock);
++
+       swtch(&(c->scheduler), p->context);
+       switchkvm();
+ 
+       // Process is done running for now.
+       // It should have changed its p->state before coming back.
++
++      acquire(&tickslock);
++      p->ticks += ticks - init_ticks;
++      release(&tickslock);
++
+       c->proc = 0;
+     }
+     release(&ptable.lock);
+@@ -532,3 +545,89 @@ procdump(void)
+     cprintf("\n");
+   }
+ }
++
++//offline
++int settickets(int tickets)
++{
++  int proc_id = myproc()->pid;
++  struct proc *p;
++
++  acquire(&ptable.lock);
++
++  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
++  {
++    if(p->pid == proc_id){
++      p->tickets = tickets;
++      release(&ptable.lock);
++      return 0;
++    }
++  }
++  
++  release(&ptable.lock);
++  return -1;
++}
++
++int getpinfo(struct pstat *proc_info)
++{
++  //if(proc_info == NULL) return -1;
++  struct proc *p;
++  int i;
++
++  acquire(&ptable.lock);
++
++  for(p = ptable.proc, i = 0; p < &ptable.proc[NPROC]; p++, i++)
++  {
++    proc_info->pid[i] = p->pid;
++    proc_info->tickets[i] = p->tickets;
++    proc_info->ticks[i] = p->ticks;
++
++    if(p->state == UNUSED) proc_info->inuse[i] = 0;
++    else proc_info->inuse[i] = 1;
++  }
++  
++  release(&ptable.lock);
++  return 0;  
++}
++
++
++//MurmurHash2: a simple psuedo random generator
++unsigned int murmur(const void * key, int len)
++{
++  acquire(&tickslock);
++  unsigned int seed = ticks;
++  release(&tickslock);
++  
++	const unsigned int m = 0x5bd1e995;
++	const int r = 24;
++	unsigned int h = seed ^ len;
++
++	const unsigned char * data = (const unsigned char *)key;
++
++	while(len >= 4)
++	{
++		unsigned int k = *(unsigned int *)data;
++
++		k *= m; 
++		k ^= k >> r; 
++		k *= m; 
++		
++		h *= m; 
++		h ^= k;
++
++		data += 4;
++		len -= 4;
++	}
++
++	switch(len)
++	{
++	case 3: h ^= data[2] << 16;
++	case 2: h ^= data[1] << 8;
++	case 1: h ^= data[0];
++	        h *= m;
++	};
++
++	h ^= h >> 13;
++	h *= m;
++	h ^= h >> 15;
++	return h;
++}
+\ No newline at end of file
+diff --git a/proc.h b/proc.h
+index 1647114..5f45d53 100644
+--- a/proc.h
++++ b/proc.h
+@@ -49,6 +49,8 @@ struct proc {
+   struct file *ofile[NOFILE];  // Open files
+   struct inode *cwd;           // Current directory
+   char name[16];               // Process name (debugging)
++  int tickets;				         // offline -> tickets of process
++  int ticks;                   // offline -> ticks of process
+ };
+ 
+ // Process memory is laid out contiguously, low addresses first:
+diff --git a/syscall.c b/syscall.c
+index ee85261..61d0c8a 100644
+--- a/syscall.c
++++ b/syscall.c
+@@ -6,6 +6,7 @@
+ #include "proc.h"
+ #include "x86.h"
+ #include "syscall.h"
++#include "pstat.h"
+ 
+ // User code makes a system call with INT T_SYSCALL.
+ // System call number in %eax.
+@@ -103,6 +104,9 @@ extern int sys_unlink(void);
+ extern int sys_wait(void);
+ extern int sys_write(void);
+ extern int sys_uptime(void);
++extern int sys_settickets(void); //offline
++extern int sys_getpinfo(void); //offline
++extern int sys_murmur(void); //offline
+ 
+ static int (*syscalls[])(void) = {
+ [SYS_fork]    sys_fork,
+@@ -126,6 +130,9 @@ static int (*syscalls[])(void) = {
+ [SYS_link]    sys_link,
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
++[SYS_settickets] sys_settickets, //offline
++[SYS_getpinfo] sys_getpinfo, //offline
++[SYS_murmur] sys_murmur, //offline
+ };
+ 
+ void
+diff --git a/syscall.h b/syscall.h
+index bc5f356..194ad14 100644
+--- a/syscall.h
++++ b/syscall.h
+@@ -20,3 +20,6 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_settickets 22
++#define SYS_getpinfo 23
++#define SYS_murmur 24
+diff --git a/sysproc.c b/sysproc.c
+index 0686d29..75c0da6 100644
+--- a/sysproc.c
++++ b/sysproc.c
+@@ -89,3 +89,29 @@ sys_uptime(void)
+   release(&tickslock);
+   return xticks;
+ }
++
++
++//offline
++int
++sys_settickets(void)
++{
++	int tickets;
++	argint(0, &tickets);
++	return settickets(tickets);	
++}
++
++int
++sys_getpinfo(void)
++{
++  struct pstat *proc_info;
++  argptr(0, (void*)&proc_info, sizeof(proc_info));
++  return getpinfo(proc_info);
++}
++
++int
++sys_murmur(void)
++{
++  return murmur((void*)"1234", 4);
++}
++
++
+diff --git a/user.h b/user.h
+index 4f99c52..3a0778a 100644
+--- a/user.h
++++ b/user.h
+@@ -1,6 +1,8 @@
+ struct stat;
+ struct rtcdate;
+ 
++#include "pstat.h"
++
+ // system calls
+ int fork(void);
+ int exit(void) __attribute__((noreturn));
+@@ -24,6 +26,11 @@ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
+ 
++//offline
++int settickets(int);
++int getpinfo(struct pstat *);
++unsigned int murmur(const void * key, int len);
++
+ // ulib.c
+ int stat(const char*, struct stat*);
+ char* strcpy(char*, const char*);
+diff --git a/usys.S b/usys.S
+index 8bfd8a1..0567cff 100644
+--- a/usys.S
++++ b/usys.S
+@@ -29,3 +29,6 @@ SYSCALL(getpid)
+ SYSCALL(sbrk)
+ SYSCALL(sleep)
+ SYSCALL(uptime)
++SYSCALL(settickets) //offline
++SYSCALL(getpinfo) //offline
++SYSCALL(murmur) //offline

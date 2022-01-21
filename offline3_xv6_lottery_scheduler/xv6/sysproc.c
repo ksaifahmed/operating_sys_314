@@ -108,4 +108,10 @@ sys_getpinfo(void)
   return getpinfo(proc_info);
 }
 
+int
+sys_murmur(void)
+{
+  return murmur((void*)"1234", 4);
+}
+
 

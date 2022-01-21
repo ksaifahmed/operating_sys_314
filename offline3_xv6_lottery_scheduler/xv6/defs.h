@@ -126,6 +126,7 @@ void            yield(void);
 //offline
 int 			settickets(int);
 int             getpinfo(struct pstat*);
+unsigned int    murmur(const void * key, int len);
 
 // swtch.S
 void            swtch(struct context**, struct context*);

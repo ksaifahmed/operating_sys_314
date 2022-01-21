@@ -31,3 +31,4 @@ SYSCALL(sleep)
 SYSCALL(uptime)
 SYSCALL(settickets) //offline
 SYSCALL(getpinfo) //offline
+SYSCALL(murmur) //offline
