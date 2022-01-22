@@ -162,6 +162,114 @@ index 82fb982..f381ac4 100644
  // swtch.S
  void            swtch(struct context**, struct context*);
  
+diff --git a/launchp.c b/launchp.c
+new file mode 100644
+index 0000000..cf460d3
+--- /dev/null
++++ b/launchp.c
+@@ -0,0 +1,68 @@
++#include "types.h"
++#include "stat.h"
++#include "user.h"
++
++
++int main(int argc, char *argv[])
++{
++	if(argc != 1){
++		printf(1, "Invalid params!\n");
++		exit();
++	}
++
++    int id = 0, i, j;
++    double x = 1.01012;
++    struct pstat *proc_info = (struct pstat*) malloc(sizeof(struct pstat));
++    int alpha = 0;
++    settickets(10);
++
++    //parent creates first child
++    id = fork();
++    if(id < 0) printf(1, "Failed to fork first child!\n");
++    if(!id) alpha = 1; //first child indicator!
++
++    //parent creates second child
++    if(id > 0) {
++        id = fork();
++        if(id < 0) printf(1, "Failed to fork second child!\n");
++    }
++
++    //parent creates third child
++    if(id > 0) {
++        id = fork();
++        if(id < 0) printf(1, "Failed to fork second child!\n");
++    }
++
++    //parent inf loop
++    if(id > 0){
++        while(1)
++        {
++            if(getpinfo(proc_info) == -1){
++                printf(1, "Something went wrong when retrieving process info!");
++                wait();
++            }
++            printf(1, "PID\tTICKS\tTICKETS\n");
++            for(i = 0; i < NPROC; i++){
++                if(proc_info->pid[i] == 1 || proc_info->pid[i] == 2)
++                 continue; //parent and shell process
++                
++                if(proc_info->inuse[i]){
++                    printf(1, "%d\t%d\t%d\n", proc_info->pid[i], proc_info->ticks[i], proc_info->tickets[i]);
++                }
++            }            
++            sleep(100);         
++        }
++    }
++
++    //child does a heavy calculation
++    if(!id){
++        if(alpha) settickets(30);
++        while(1)
++        {
++            for(j = 0; j < 214748000; j++)
++                x += 0.0131*45.445;
++        }
++    }
++
++	exit();
++}
+diff --git a/listp.c b/listp.c
+new file mode 100644
+index 0000000..ed342d7
+--- /dev/null
++++ b/listp.c
+@@ -0,0 +1,28 @@
++#include "types.h"
++#include "stat.h"
++#include "user.h"
++#include "pstat.h"
++
++int main(int argc, char *argv[])
++{
++	if(argc != 1){
++		printf(1, "Invalid no of params!\n");
++		exit();
++	}
++
++    struct pstat *proc_info = (struct pstat*) malloc(sizeof(struct pstat));
++    if(getpinfo(proc_info) == -1){
++        printf(1, "Something went wrong when retrieving process info!");
++        exit();
++    }
++
++    int i;
++    printf(1, "PID\tTICKS\tTICKETS\n");
++    for(i = 0; i < NPROC; i++){
++        if(proc_info->inuse[i]){
++            printf(1, "%d\t%d\t%d\n", proc_info->pid[i], proc_info->ticks[i], proc_info->tickets[i]);
++        }
++    }
++
++	exit();
++}
 diff --git a/proc.c b/proc.c
 index 806b1b1..6267101 100644
 --- a/proc.c
@@ -400,6 +508,57 @@ index 1647114..5f45d53 100644
  };
  
  // Process memory is laid out contiguously, low addresses first:
+diff --git a/pstat.h b/pstat.h
+new file mode 100644
+index 0000000..da03e69
+--- /dev/null
++++ b/pstat.h
+@@ -0,0 +1,22 @@
++#ifndef _PSTAT_H_
++
++#define _PSTAT_H_
++
++
++#include "param.h"
++
++
++struct pstat {
++
++  int inuse[NPROC];   // whether this slot of the process table is in use (1 or 0)
++
++  int tickets[NPROC]; // the number of tickets this process has
++
++  int pid[NPROC];     // the PID of each process
++
++  int ticks[NPROC];   // the number of ticks each process has accumulated
++
++};
++
++
++#endif // _PSTAT_H_
+diff --git a/set.c b/set.c
+new file mode 100644
+index 0000000..9d2d49f
+--- /dev/null
++++ b/set.c
+@@ -0,0 +1,17 @@
++#include "types.h"
++#include "stat.h"
++#include "user.h"
++
++int main(int argc, char *argv[])
++{
++	if(argc <= 1){
++		printf(1, "Too few params!\n");
++		exit();
++	}
++	if(argc == 2){
++		settickets(atoi(argv[1]));
++		exit();
++	}
++	printf(1, "Too many arguments!\n");
++	exit();
++}
 diff --git a/syscall.c b/syscall.c
 index ee85261..61d0c8a 100644
 --- a/syscall.c
