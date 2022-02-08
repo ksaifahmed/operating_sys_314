@@ -511,8 +511,11 @@ procdump(void)
   [RUNNING]   "run   ",
   [ZOMBIE]    "zombie"
   };
-  int i;
+  int i, j;
   struct proc *p;
+  pde_t *pde;
+  pte_t *pgtab;
+  pte_t *pte;
   char *state;
   uint pc[10];
 
@@ -529,6 +532,41 @@ procdump(void)
       for(i=0; i<10 && pc[i] != 0; i++)
         cprintf(" %p", pc[i]);
     }
-    cprintf("\n");
+    cprintf("\nPage tables:\n");
+    cprintf("\tmemory location of page directory = %d\n", *p->pgdir);
+    for(i=0; i<512; i++)
+    {
+      pde = &p->pgdir[i]; //Page Dir Entries
+      if(*pde & PTE_P){ //if valid and present
+        cprintf("\tpdir PTE %d, %d:\n", i, PTE_ADDR(*pde)/4096); //PPN of the PDE
+        cprintf("\t\tmemory location of page table = %d\n", PTE_ADDR(*pde)); //Mem location of pgtable
+
+        pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+        //loop through pgtable
+        for(j=0; j<1024; j++)
+        {
+          pte = &pgtab[j];
+          if(*pte & PTE_P && *pte & PTE_U){
+            cprintf("\t\tptbl PTE %d, %d, %d\n", j, PTE_ADDR(*pte)/4096, PTE_ADDR(*pte));
+          }
+        }
+      }
+    }
+
+    cprintf("Page Mappings:\n");
+    for(i=0; i<512; i++){
+      pde = &p->pgdir[i];
+      if(*pde & PTE_P){
+        pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+        //loop through pgtable
+        for(j=0; j<1024; j++){
+          pte = &pgtab[j];
+          if(*pte & PTE_P && *pte & PTE_U){
+            cprintf("%d -> %d\n", i*1024+j, PTE_ADDR(*pte)/4096);
+          }
+        }
+      }
+    }
+    cprintf("\n\n");
   }
 }
