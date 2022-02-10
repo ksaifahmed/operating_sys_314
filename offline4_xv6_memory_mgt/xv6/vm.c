@@ -10,6 +10,49 @@
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
+
+//PAGE REPLACEMENT ALGO: FIFO
+uint FifoAlgo(struct proc *p)
+{ 
+  //get the first
+  uint va = p->page_list[0].va;
+  int j;
+  
+  //shift all elm left by 1
+  for(j=0; j < p->page_list_last; j++)
+    p->page_list[j].va = p->page_list[j+1].va;
+  
+  //decrease last elm index
+  p->page_list_last--;
+  return va;
+}
+//=====================================================
+
+
+//removes a page from page_list by matching va
+void remove_page_(struct proc *p, uint va)
+{
+  int j, idx = -1;
+  for(j=0; j <= p->page_list_last; j++) {
+    if(p->page_list[j].va == va) {
+      idx = j;
+      break;
+    }
+  }
+  
+  if(idx == -1){
+    return;
+  }
+
+  for(j=idx; j < p->page_list_last; j++)
+    p->page_list[j].va = p->page_list[j+1].va;
+
+  p->page_list_last--;
+}
+//=====================================================
+
+
+
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
 void
@@ -71,6 +114,7 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
     if(*pte & PTE_P)
       panic("remap");
     *pte = pa | perm | PTE_P;
+    *pte = *pte & ~PTE_PG;
     if(a == last)
       break;
     a += PGSIZE;
@@ -244,6 +288,48 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       kfree(mem);
       return 0;
     }
+    
+    else{ //page made successfully
+      if(myproc()-> pid > 2) {
+        struct proc *p = myproc();
+
+        //within MAX_PSYCH_LIMIT
+        if(p->page_list_last < MAX_PSYCH_PAGES - 1) {
+          p->page_list_last++;
+          p->page_list[p->page_list_last].va = PGROUNDDOWN((uint)a);
+          //cprintf("vpn hochche %d\n", a);
+        }
+
+        else {
+          //get the PTE to be swapped
+          uint va_2b_swapped = FifoAlgo(p); //return "a" aka vpn
+          char *vir_add = (char*)PGROUNDDOWN((uint)va_2b_swapped);
+          pte_t *pte_ = walkpgdir(pgdir, vir_add, 1);
+          uint pa = PTE_ADDR(*pte_);
+
+          //write contents in SwapFILE
+          writeToSwapFile(p, P2V(pa), p->file_offset, PGSIZE);  
+
+          //store meta data 
+          p->meta_list_last++;
+          p->meta_list[p->meta_list_last].va = va_2b_swapped;
+          p->meta_list[p->meta_list_last].file_start_idx = p->file_offset;
+          p->file_offset += PGSIZE;    
+
+          //clear the PTE_P flag and set the PTE_PG flag
+          *pte_ = *pte_ & ~PTE_P;
+          *pte_ = *pte_ | PTE_PG;
+
+          //free the page
+          kfree(P2V(pa));
+
+          //store new page in page_list
+          p->page_list_last++;
+          p->page_list[p->page_list_last].va = PGROUNDDOWN((uint)a);
+        }
+     }
+    
+    }
   }
   return newsz;
 }
@@ -271,6 +357,10 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       if(pa == 0)
         panic("kfree");
       char *v = P2V(pa);
+      
+      //remove it from page_list array
+      remove_page_(myproc(), PGROUNDDOWN((uint)a));
+
       kfree(v);
       *pte = 0;
     }

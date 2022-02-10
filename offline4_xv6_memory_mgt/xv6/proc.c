@@ -7,6 +7,129 @@
 #include "proc.h"
 #include "spinlock.h"
 
+static pte_t *
+walkpgdir(pde_t *pgdir, const void *va, int alloc)
+{
+  pde_t *pde;
+  pte_t *pgtab;
+
+  pde = &pgdir[PDX(va)];
+  if(*pde & PTE_P){
+    pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+  } else {
+    if(!alloc || (pgtab = (pte_t*)kalloc()) == 0)
+      return 0;
+    // Make sure all those PTE_P bits are zero.
+    memset(pgtab, 0, PGSIZE);
+    // The permissions here are overly generous, but they can
+    // be further restricted by the permissions in the page table
+    // entries, if necessary.
+    *pde = V2P(pgtab) | PTE_P | PTE_W | PTE_U;
+  }
+  return &pgtab[PTX(va)];
+}
+
+static int
+mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
+{
+  char *a, *last;
+  pte_t *pte;
+
+  a = (char*)PGROUNDDOWN((uint)va);
+  last = (char*)PGROUNDDOWN(((uint)va) + size - 1);
+  for(;;){
+    if((pte = walkpgdir(pgdir, a, 1)) == 0)
+      return -1;
+    if(*pte & PTE_P)
+      panic("remap");
+    *pte = pa | perm | PTE_P;
+    *pte = *pte & ~PTE_PG;
+    if(a == last)
+      break;
+    a += PGSIZE;
+    pa += PGSIZE;
+  }
+  return 0;
+}
+
+//PAGE REPLACEMENT ALGO: FIFO
+uint FifoAlgo_TRAP(struct proc *p)
+{ 
+  //get the first
+  uint va = p->page_list[0].va;
+  int j;
+  
+  //shift all elm left by 1
+  for(j=0; j < p->page_list_last; j++)
+    p->page_list[j].va = p->page_list[j+1].va;
+  
+  //decrease last elm index
+  p->page_list_last--;
+  return va;
+}
+
+
+void do_the_swap(struct proc *p, uint va)
+{
+  int i;
+  for(i=0; i <= p->meta_list_last; i++)
+  {
+    if(va == p->meta_list[i].va){ //this va is in file!
+      //alloc a new page
+      char *mem = kalloc();
+      memset(mem, 0, PGSIZE);
+
+      //read contents from swapFile
+      readFromSwapFile(p, mem, p->meta_list[i].file_start_idx, PGSIZE);
+
+      //map new page to this page_fault_address va
+      mappages(p->pgdir, (char*)va, PGSIZE, V2P(mem), PTE_W|PTE_U);
+
+      //=============================================================
+      //get the PTE to be swapped
+      uint va_2b_swapped = FifoAlgo_TRAP(p); //return "a" aka vpn
+      pte_t *pte_ = walkpgdir(p->pgdir, (char *) va_2b_swapped, 1);
+      uint pa = PTE_ADDR(*pte_);
+
+      //write contents in SwapFILE
+      writeToSwapFile(p, P2V(pa), p->file_offset, PGSIZE);  
+
+      //store meta data 
+      p->meta_list_last++;
+      p->meta_list[p->meta_list_last].va = va_2b_swapped;
+      p->meta_list[p->meta_list_last].file_start_idx = p->file_offset;
+      p->file_offset += PGSIZE;    
+
+      //clear the PTE_P flag and set the PTE_PG flag
+      *pte_ = *pte_ & ~PTE_P;
+      *pte_ = *pte_ | PTE_PG;
+
+      //free the page
+      kfree(P2V(pa));
+
+      //store fault page in page_list
+      p->page_list_last++;
+      p->page_list[p->page_list_last].va = va;      
+      break;
+    }
+  }  
+}
+
+//USED FOR SKIPPING THE PAGING SYSTEM
+//FOR SHELL AND INIT PROCESSES
+#define V_PID 2
+int not_shellint(int pid, int lim)
+{
+  return pid > lim;
+}
+
+
+void FiFoRemove()
+{
+
+}
+
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -111,7 +234,15 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
-
+  
+  //NEW PROCESS CREATED, SO CREATE NEW SWAPFILE
+  if(not_shellint(p->pid, V_PID)) {
+    createSwapFile(p);
+    p->page_list_last = -1; //0 elements in page_list
+    p->meta_list_last = -1; //0 elements in swap file
+    p->file_offset = 0; //swapFile begin offset
+  }
+  
   return p;
 }
 
@@ -234,6 +365,13 @@ exit(void)
   if(curproc == initproc)
     panic("init exiting");
 
+  // if(curproc->pid > 2) {
+  //   for(fd=0; fd <= curproc->page_list_last; fd++)
+  //   {
+  //     cprintf("pid:%d, va is %d\n", curproc->pid, curproc->page_list[fd].va);
+  //   }
+  // }
+
   // Close all open files.
   for(fd = 0; fd < NOFILE; fd++){
     if(curproc->ofile[fd]){
@@ -241,6 +379,12 @@ exit(void)
       curproc->ofile[fd] = 0;
     }
   }
+  
+  //REMOVE SWAP FILE WHEN PROCESS EXITS
+  if(not_shellint(curproc->pid, V_PID)) {
+    removeSwapFile(curproc);
+  }
+
 
   begin_op();
   iput(curproc->cwd);

@@ -34,6 +34,20 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+
+#define MAX_PSYCH_PAGES 15
+
+//list for fifo replacement implementation
+struct FiFoList {
+    uint va;
+};
+
+struct PageMeta {
+    uint va;
+    uint file_start_idx;
+};
+
+
 // Per-process state
 struct proc {
   uint sz;                     // Size of process memory (bytes)
@@ -51,7 +65,17 @@ struct proc {
   char name[16];               // Process name (debugging)
   //Swap file. must initiate with create swap file
   struct file *swapFile;			//page file
+  struct FiFoList page_list[MAX_PSYCH_PAGES];      //head of the fifo list
+  int page_list_last;
+
+  struct PageMeta meta_list[MAX_PSYCH_PAGES];
+  int meta_list_last;
+
+  int file_offset;
 };
+
+//the swapping mechanism
+void do_the_swap(struct proc *p, uint va);
 
 // Process memory is laid out contiguously, low addresses first:
 //   text

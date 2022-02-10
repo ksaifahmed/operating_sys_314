@@ -77,6 +77,12 @@ trap(struct trapframe *tf)
             cpuid(), tf->cs, tf->eip);
     lapiceoi();
     break;
+  case T_PGFLT:{
+    uint va = rcr2();
+    struct proc *p = myproc();
+    do_the_swap(p, va);
+    break;
+  }
 
   //PAGEBREAK: 13
   default:
