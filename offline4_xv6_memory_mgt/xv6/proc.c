@@ -52,6 +52,7 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
   return 0;
 }
 
+
 //PAGE REPLACEMENT ALGO: FIFO
 uint FifoAlgo_TRAP(struct proc *p)
 { 
@@ -66,6 +67,13 @@ uint FifoAlgo_TRAP(struct proc *p)
   //decrease last elm index
   p->page_list_last--;
   return va;
+}
+
+
+uint get_va_to_replace_trap(struct proc *p)
+{
+  if(ALGO_NO) return FifoAlgo_TRAP(p);
+  else return 10;
 }
 
 
@@ -87,7 +95,7 @@ void do_the_swap(struct proc *p, uint va)
 
       //=============================================================
       //get the PTE to be swapped
-      uint va_2b_swapped = FifoAlgo_TRAP(p); //return "a" aka vpn
+      uint va_2b_swapped = get_va_to_replace_trap(p); //return "a" aka vpn
       pte_t *pte_ = walkpgdir(p->pgdir, (char *) va_2b_swapped, 1);
       uint pa = PTE_ADDR(*pte_);
 

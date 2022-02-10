@@ -10,7 +10,6 @@
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
-
 //PAGE REPLACEMENT ALGO: FIFO
 uint FifoAlgo(struct proc *p)
 { 
@@ -25,6 +24,13 @@ uint FifoAlgo(struct proc *p)
   //decrease last elm index
   p->page_list_last--;
   return va;
+}
+
+
+uint get_va_to_replaced(struct proc *p)
+{
+  if(ALGO_NO) return FifoAlgo(p);
+  else return 10;
 }
 //=====================================================
 
@@ -302,7 +308,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 
         else {
           //get the PTE to be swapped
-          uint va_2b_swapped = FifoAlgo(p); //return "a" aka vpn
+          uint va_2b_swapped = get_va_to_replaced(p); //return "a" aka vpn
           char *vir_add = (char*)PGROUNDDOWN((uint)va_2b_swapped);
           pte_t *pte_ = walkpgdir(pgdir, vir_add, 1);
           uint pa = PTE_ADDR(*pte_);

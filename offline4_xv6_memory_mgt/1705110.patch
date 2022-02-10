@@ -1,3 +1,6 @@
+diff --git a/1705110.patch b/1705110.patch
+new file mode 100644
+index 0000000..e69de29
 diff --git a/Makefile b/Makefile
 index 09d790c..a20d048 100644
 --- a/Makefile
@@ -874,10 +877,25 @@ index 0000000..f77275f
 +  return namex(path, 1, name);
 +}
 diff --git a/mmu.h b/mmu.h
-index a82d8e2..aec4420 100644
+index a82d8e2..73c5f5b 100644
 --- a/mmu.h
 +++ b/mmu.h
-@@ -95,6 +95,8 @@ struct segdesc {
+@@ -11,6 +11,14 @@
+ 
+ #define CR4_PSE         0x00000010      // Page size extension
+ 
++
++//=================================================================
++//1 for FIFO, 0 FOR NRU
++#define ALGO_NO 1
++//=================================================================
++
++
++
+ // various segment selectors.
+ #define SEG_KCODE 1  // kernel code
+ #define SEG_KDATA 2  // kernel data+stack
+@@ -95,6 +103,8 @@ struct segdesc {
  #define PTE_W           0x002   // Writeable
  #define PTE_U           0x004   // User
  #define PTE_PS          0x080   // Page Size
@@ -1118,10 +1136,10 @@ index 0000000..54ef2b9
 + {
 +   uint off;
 diff --git a/proc.c b/proc.c
-index 806b1b1..b1b1fa9 100644
+index 806b1b1..52edc4d 100644
 --- a/proc.c
 +++ b/proc.c
-@@ -7,6 +7,129 @@
+@@ -7,6 +7,137 @@
  #include "proc.h"
  #include "spinlock.h"
  
@@ -1170,6 +1188,7 @@ index 806b1b1..b1b1fa9 100644
 +  return 0;
 +}
 +
++
 +//PAGE REPLACEMENT ALGO: FIFO
 +uint FifoAlgo_TRAP(struct proc *p)
 +{ 
@@ -1184,6 +1203,13 @@ index 806b1b1..b1b1fa9 100644
 +  //decrease last elm index
 +  p->page_list_last--;
 +  return va;
++}
++
++
++uint get_va_to_replace_trap(struct proc *p)
++{
++  if(ALGO_NO) return FifoAlgo_TRAP(p);
++  else return 10;
 +}
 +
 +
@@ -1205,7 +1231,7 @@ index 806b1b1..b1b1fa9 100644
 +
 +      //=============================================================
 +      //get the PTE to be swapped
-+      uint va_2b_swapped = FifoAlgo_TRAP(p); //return "a" aka vpn
++      uint va_2b_swapped = get_va_to_replace_trap(p); //return "a" aka vpn
 +      pte_t *pte_ = walkpgdir(p->pgdir, (char *) va_2b_swapped, 1);
 +      uint pa = PTE_ADDR(*pte_);
 +
@@ -1251,7 +1277,7 @@ index 806b1b1..b1b1fa9 100644
  struct {
    struct spinlock lock;
    struct proc proc[NPROC];
-@@ -111,7 +234,15 @@ found:
+@@ -111,7 +242,15 @@ found:
    p->context = (struct context*)sp;
    memset(p->context, 0, sizeof *p->context);
    p->context->eip = (uint)forkret;
@@ -1268,7 +1294,7 @@ index 806b1b1..b1b1fa9 100644
    return p;
  }
  
-@@ -234,6 +365,13 @@ exit(void)
+@@ -234,6 +373,13 @@ exit(void)
    if(curproc == initproc)
      panic("init exiting");
  
@@ -1282,7 +1308,7 @@ index 806b1b1..b1b1fa9 100644
    // Close all open files.
    for(fd = 0; fd < NOFILE; fd++){
      if(curproc->ofile[fd]){
-@@ -241,6 +379,12 @@ exit(void)
+@@ -241,6 +387,12 @@ exit(void)
        curproc->ofile[fd] = 0;
      }
    }
@@ -1295,7 +1321,7 @@ index 806b1b1..b1b1fa9 100644
  
    begin_op();
    iput(curproc->cwd);
-@@ -511,8 +655,11 @@ procdump(void)
+@@ -511,8 +663,11 @@ procdump(void)
    [RUNNING]   "run   ",
    [ZOMBIE]    "zombie"
    };
@@ -1308,7 +1334,7 @@ index 806b1b1..b1b1fa9 100644
    char *state;
    uint pc[10];
  
-@@ -529,6 +676,41 @@ procdump(void)
+@@ -529,6 +684,41 @@ procdump(void)
        for(i=0; i<10 && pc[i] != 0; i++)
          cprintf(" %p", pc[i]);
      }
@@ -1889,14 +1915,13 @@ index 41c66eb..e46bc30 100644
    //PAGEBREAK: 13
    default:
 diff --git a/vm.c b/vm.c
-index 7134cff..72e49c5 100644
+index 7134cff..3e7b922 100644
 --- a/vm.c
 +++ b/vm.c
-@@ -10,6 +10,49 @@
+@@ -10,6 +10,55 @@
  extern char data[];  // defined by kernel.ld
  pde_t *kpgdir;  // for use in scheduler()
  
-+
 +//PAGE REPLACEMENT ALGO: FIFO
 +uint FifoAlgo(struct proc *p)
 +{ 
@@ -1911,6 +1936,13 @@ index 7134cff..72e49c5 100644
 +  //decrease last elm index
 +  p->page_list_last--;
 +  return va;
++}
++
++
++uint get_va_to_replaced(struct proc *p)
++{
++  if(ALGO_NO) return FifoAlgo(p);
++  else return 10;
 +}
 +//=====================================================
 +
@@ -1942,7 +1974,7 @@ index 7134cff..72e49c5 100644
  // Set up CPU's kernel segment descriptors.
  // Run once on entry on each CPU.
  void
-@@ -71,6 +114,7 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
+@@ -71,6 +120,7 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
      if(*pte & PTE_P)
        panic("remap");
      *pte = pa | perm | PTE_P;
@@ -1950,7 +1982,7 @@ index 7134cff..72e49c5 100644
      if(a == last)
        break;
      a += PGSIZE;
-@@ -244,6 +288,48 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
+@@ -244,6 +294,48 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
        kfree(mem);
        return 0;
      }
@@ -1968,7 +2000,7 @@ index 7134cff..72e49c5 100644
 +
 +        else {
 +          //get the PTE to be swapped
-+          uint va_2b_swapped = FifoAlgo(p); //return "a" aka vpn
++          uint va_2b_swapped = get_va_to_replaced(p); //return "a" aka vpn
 +          char *vir_add = (char*)PGROUNDDOWN((uint)va_2b_swapped);
 +          pte_t *pte_ = walkpgdir(pgdir, vir_add, 1);
 +          uint pa = PTE_ADDR(*pte_);
@@ -1999,7 +2031,7 @@ index 7134cff..72e49c5 100644
    }
    return newsz;
  }
-@@ -271,6 +357,10 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
+@@ -271,6 +363,10 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
        if(pa == 0)
          panic("kfree");
        char *v = P2V(pa);

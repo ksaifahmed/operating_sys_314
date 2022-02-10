@@ -11,6 +11,14 @@
 
 #define CR4_PSE         0x00000010      // Page size extension
 
+
+//=================================================================
+//1 for FIFO, 0 FOR NRU
+#define ALGO_NO 1
+//=================================================================
+
+
+
 // various segment selectors.
 #define SEG_KCODE 1  // kernel code
 #define SEG_KDATA 2  // kernel data+stack
