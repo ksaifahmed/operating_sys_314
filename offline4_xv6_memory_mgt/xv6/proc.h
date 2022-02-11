@@ -75,7 +75,7 @@ struct proc {
 };
 
 //the swapping mechanism
-void do_the_swap(struct proc *p, uint va);
+int do_the_swap(struct proc *p, uint va);
 
 // Process memory is laid out contiguously, low addresses first:
 //   text

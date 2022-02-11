@@ -7,6 +7,32 @@
 #include "proc.h"
 #include "spinlock.h"
 
+
+void printCurrentPageList(struct proc *p)
+{
+  int i;
+  cprintf("\n============Page List==============\n");
+  for(i=0; i <= p->page_list_last; i++)
+  {
+    cprintf("index: %d, va: %d\n", i, p->page_list[i].va);
+  }
+  cprintf("\n===================================\n");
+
+}
+
+void printCurrentFileList(struct proc *p)
+{
+  int i;
+  cprintf("\n============Page List==============\n");
+  for(i=0; i <= p->meta_list_last; i++)
+  {
+    cprintf("file offset: %d, va: %d\n", p->meta_list[i].file_start_idx, p->meta_list[i].va);
+  }
+  cprintf("\n===================================\n");
+
+}
+
+
 static pte_t *
 walkpgdir(pde_t *pgdir, const void *va, int alloc)
 {
@@ -76,13 +102,29 @@ uint get_va_to_replace_trap(struct proc *p)
   else return 10;
 }
 
+//removes a page from meta/file list by shifting
+void remove_meta_(struct proc *p, uint va, int index)
+{
+  int j;
+  for(j=index; j < p->meta_list_last; j++)
+    p->meta_list[j].va = p->meta_list[j+1].va;
 
-void do_the_swap(struct proc *p, uint va)
+  p->meta_list_last--;
+}
+//=====================================================
+
+
+int do_the_swap(struct proc *p, uint va) //params: process, rcr2()
 {
   int i;
+  //cprintf("rcr2: %d\n", va);
+  va = PTE_ADDR(va);
+  cprintf("\nFAULT!!! PID->%d\twants va->%d\n", p->pid, va);
+  printCurrentPageList(p);
   for(i=0; i <= p->meta_list_last; i++)
   {
     if(va == p->meta_list[i].va){ //this va is in file!
+      cprintf("va: %d found in file with offset: %d\n", va, p->meta_list[i].file_start_idx);
       //alloc a new page
       char *mem = kalloc();
       memset(mem, 0, PGSIZE);
@@ -90,9 +132,13 @@ void do_the_swap(struct proc *p, uint va)
       //read contents from swapFile
       readFromSwapFile(p, mem, p->meta_list[i].file_start_idx, PGSIZE);
 
+      //remove this meta data from meta_list
+      remove_meta_(p, va, i);
+
       //map new page to this page_fault_address va
       mappages(p->pgdir, (char*)va, PGSIZE, V2P(mem), PTE_W|PTE_U);
-
+      cprintf("va: %d read and mapped to pa: %d\n", va, V2P(mem));
+      
       //=============================================================
       //get the PTE to be swapped
       uint va_2b_swapped = get_va_to_replace_trap(p); //return "a" aka vpn
@@ -101,6 +147,7 @@ void do_the_swap(struct proc *p, uint va)
 
       //write contents in SwapFILE
       writeToSwapFile(p, P2V(pa), p->file_offset, PGSIZE);  
+      cprintf("va_to_be_swapped: %d is written to file_offset: %d\n", va_2b_swapped, p->file_offset);
 
       //store meta data 
       p->meta_list_last++;
@@ -114,13 +161,18 @@ void do_the_swap(struct proc *p, uint va)
 
       //free the page
       kfree(P2V(pa));
+      cprintf("va_to_be_swapped: %d kfree using address: %d\n", va_2b_swapped, P2V(pa));  
 
       //store fault page in page_list
       p->page_list_last++;
-      p->page_list[p->page_list_last].va = va;      
-      break;
+      p->page_list[p->page_list_last].va = va;    
+      cprintf("va: %d stored in page_list at index: %d\n\n", va, p->page_list_last);  
+      return 1;
     }
-  }  
+  }
+  printCurrentFileList(p);
+  //cprintf("paina page beta!\n\n\n\n");  
+  return 0;
 }
 
 //USED FOR SKIPPING THE PAGING SYSTEM
@@ -129,12 +181,6 @@ void do_the_swap(struct proc *p, uint va)
 int not_shellint(int pid, int lim)
 {
   return pid > lim;
-}
-
-
-void FiFoRemove()
-{
-
 }
 
 
@@ -313,6 +359,14 @@ growproc(int n)
   return 0;
 }
 
+
+  // void copy_page_data(struct proc *op, struct proc *np)
+  // {
+  //   int i;
+  //   for(i=0; i <= op->page)
+  // }
+
+
 // Create a new process copying p as the parent.
 // Sets up stack to return as if from system call.
 // Caller must set state of returned proc to RUNNABLE.
@@ -350,6 +404,11 @@ fork(void)
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
 
   pid = np->pid;
+
+  //copying meta data, page table ds
+  if(curproc->pid > 2) {
+    cprintf("ei id to boro\n");
+  }else cprintf("\nthis id is %d\n\n", curproc->pid);
 
   acquire(&ptable.lock);
 

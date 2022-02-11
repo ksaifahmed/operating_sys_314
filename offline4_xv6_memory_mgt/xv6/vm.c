@@ -298,19 +298,21 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     else{ //page made successfully
       if(myproc()-> pid > 2) {
         struct proc *p = myproc();
-
+        //cprintf("pid: %p te va bhorbo ekhon: %d\n\n", p->pid, a);
         //within MAX_PSYCH_LIMIT
         if(p->page_list_last < MAX_PSYCH_PAGES - 1) {
           p->page_list_last++;
           p->page_list[p->page_list_last].va = PGROUNDDOWN((uint)a);
-          //cprintf("vpn hochche %d\n", a);
+          //cprintf("vm pid: %d, vpn hochche %d, index: %d\n", p->pid, a, p->page_list_last);
         }
 
         else {
+          //cprintf("sf pid: %d, vpn hochche %d\n", p->pid, a);
           //get the PTE to be swapped
           uint va_2b_swapped = get_va_to_replaced(p); //return "a" aka vpn
+          //cprintf("sf pid: %d, swap hochche %d\n", p->pid, va_2b_swapped);
           char *vir_add = (char*)PGROUNDDOWN((uint)va_2b_swapped);
-          pte_t *pte_ = walkpgdir(pgdir, vir_add, 1);
+          pte_t *pte_ = walkpgdir(pgdir, vir_add, 0);
           uint pa = PTE_ADDR(*pte_);
 
           //write contents in SwapFILE
@@ -365,7 +367,8 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       char *v = P2V(pa);
       
       //remove it from page_list array
-      remove_page_(myproc(), PGROUNDDOWN((uint)a));
+      if(myproc()->pid > 2)
+        remove_page_(myproc(), PGROUNDDOWN((uint)a));
 
       kfree(v);
       *pte = 0;

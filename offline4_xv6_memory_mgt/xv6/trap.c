@@ -80,8 +80,8 @@ trap(struct trapframe *tf)
   case T_PGFLT:{
     uint va = rcr2();
     struct proc *p = myproc();
-    do_the_swap(p, va);
-    break;
+    if(do_the_swap(p, va) == 1)
+      break;
   }
 
   //PAGEBREAK: 13

@@ -2,7 +2,7 @@ diff --git a/1705110.patch b/1705110.patch
 new file mode 100644
 index 0000000..e69de29
 diff --git a/Makefile b/Makefile
-index 09d790c..a20d048 100644
+index 09d790c..52a852d 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -51,7 +51,7 @@ TOOLPREFIX := $(shell if i386-jos-elf-objdump -i 2>&1 | grep '^elf32-i386$$' >/d
@@ -14,7 +14,15 @@ index 09d790c..a20d048 100644
  
  # Try to infer the correct QEMU
  ifndef QEMU
-@@ -217,7 +217,7 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
+@@ -180,6 +180,7 @@ UPROGS=\
+ 	_stressfs\
+ 	_usertests\
+ 	_wc\
++	_memtest\
+ 	_zombie\
+ 
+ fs.img: mkfs README $(UPROGS)
+@@ -217,7 +218,7 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
  	then echo "-gdb tcp::$(GDBPORT)"; \
  	else echo "-s -p $(GDBPORT)"; fi)
  ifndef CPUS
@@ -22,6 +30,15 @@ index 09d790c..a20d048 100644
 +CPUS := 1
  endif
  QEMUOPTS = -drive file=fs.img,index=1,media=disk,format=raw -drive file=xv6.img,index=0,media=disk,format=raw -smp $(CPUS) -m 512 $(QEMUEXTRA)
+ 
+@@ -250,7 +251,7 @@ qemu-nox-gdb: fs.img xv6.img .gdbinit
+ EXTRA=\
+ 	mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
+ 	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c zombie.c\
+-	printf.c umalloc.c\
++	printf.c memtest.c umalloc.c\
+ 	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
+ 	.gdbinit.tmpl gdbutil\
  
 diff --git a/defs.h b/defs.h
 index 82fb982..f33f2cb 100644
@@ -876,6 +893,37 @@ index 0000000..f77275f
 +{
 +  return namex(path, 1, name);
 +}
+diff --git a/memtest.c b/memtest.c
+new file mode 100644
+index 0000000..108b03c
+--- /dev/null
++++ b/memtest.c
+@@ -0,0 +1,24 @@
++#include "types.h"
++#include "stat.h"
++#include "user.h"
++
++
++int main(int argc, char *argv[])
++{
++    printf(1, "user code, memtest init\n");
++
++    int size = 4096 * 5, i;
++    int *arr = (int *) malloc(sizeof(int) * size);
++    printf(1, "user code, mem allocated\n");
++
++
++    for(i=0; i<size; i++)
++    {
++        arr[i] = i * 2;
++        if(i%100 == 0)
++            printf(1, "user code, index: %d, val: %d\n", i, arr[i]);
++    }
++
++    printf(1, "hoise kaaj, sheeiiiiiiiiii\n");
++	exit();
++}
+\ No newline at end of file
 diff --git a/mmu.h b/mmu.h
 index a82d8e2..73c5f5b 100644
 --- a/mmu.h
@@ -1136,13 +1184,39 @@ index 0000000..54ef2b9
 + {
 +   uint off;
 diff --git a/proc.c b/proc.c
-index 806b1b1..52edc4d 100644
+index 806b1b1..6da8210 100644
 --- a/proc.c
 +++ b/proc.c
-@@ -7,6 +7,137 @@
+@@ -7,6 +7,183 @@
  #include "proc.h"
  #include "spinlock.h"
  
++
++void printCurrentPageList(struct proc *p)
++{
++  int i;
++  cprintf("\n============Page List==============\n");
++  for(i=0; i <= p->page_list_last; i++)
++  {
++    cprintf("index: %d, va: %d\n", i, p->page_list[i].va);
++  }
++  cprintf("\n===================================\n");
++
++}
++
++void printCurrentFileList(struct proc *p)
++{
++  int i;
++  cprintf("\n============Page List==============\n");
++  for(i=0; i <= p->meta_list_last; i++)
++  {
++    cprintf("file offset: %d, va: %d\n", p->meta_list[i].file_start_idx, p->meta_list[i].va);
++  }
++  cprintf("\n===================================\n");
++
++}
++
++
 +static pte_t *
 +walkpgdir(pde_t *pgdir, const void *va, int alloc)
 +{
@@ -1212,13 +1286,29 @@ index 806b1b1..52edc4d 100644
 +  else return 10;
 +}
 +
++//removes a page from meta/file list by shifting
++void remove_meta_(struct proc *p, uint va, int index)
++{
++  int j;
++  for(j=index; j < p->meta_list_last; j++)
++    p->meta_list[j].va = p->meta_list[j+1].va;
 +
-+void do_the_swap(struct proc *p, uint va)
++  p->meta_list_last--;
++}
++//=====================================================
++
++
++int do_the_swap(struct proc *p, uint va) //params: process, rcr2()
 +{
 +  int i;
++  //cprintf("rcr2: %d\n", va);
++  va = PTE_ADDR(va);
++  cprintf("\nFAULT!!! PID->%d\twants va->%d\n", p->pid, va);
++  printCurrentPageList(p);
 +  for(i=0; i <= p->meta_list_last; i++)
 +  {
 +    if(va == p->meta_list[i].va){ //this va is in file!
++      cprintf("va: %d found in file with offset: %d\n", va, p->meta_list[i].file_start_idx);
 +      //alloc a new page
 +      char *mem = kalloc();
 +      memset(mem, 0, PGSIZE);
@@ -1226,9 +1316,13 @@ index 806b1b1..52edc4d 100644
 +      //read contents from swapFile
 +      readFromSwapFile(p, mem, p->meta_list[i].file_start_idx, PGSIZE);
 +
++      //remove this meta data from meta_list
++      remove_meta_(p, va, i);
++
 +      //map new page to this page_fault_address va
 +      mappages(p->pgdir, (char*)va, PGSIZE, V2P(mem), PTE_W|PTE_U);
-+
++      cprintf("va: %d read and mapped to pa: %d\n", va, V2P(mem));
++      
 +      //=============================================================
 +      //get the PTE to be swapped
 +      uint va_2b_swapped = get_va_to_replace_trap(p); //return "a" aka vpn
@@ -1237,6 +1331,7 @@ index 806b1b1..52edc4d 100644
 +
 +      //write contents in SwapFILE
 +      writeToSwapFile(p, P2V(pa), p->file_offset, PGSIZE);  
++      cprintf("va_to_be_swapped: %d is written to file_offset: %d\n", va_2b_swapped, p->file_offset);
 +
 +      //store meta data 
 +      p->meta_list_last++;
@@ -1250,13 +1345,18 @@ index 806b1b1..52edc4d 100644
 +
 +      //free the page
 +      kfree(P2V(pa));
++      cprintf("va_to_be_swapped: %d kfree using address: %d\n", va_2b_swapped, P2V(pa));  
 +
 +      //store fault page in page_list
 +      p->page_list_last++;
-+      p->page_list[p->page_list_last].va = va;      
-+      break;
++      p->page_list[p->page_list_last].va = va;    
++      cprintf("va: %d stored in page_list at index: %d\n\n", va, p->page_list_last);  
++      return 1;
 +    }
-+  }  
++  }
++  printCurrentFileList(p);
++  //cprintf("paina page beta!\n\n\n\n");  
++  return 0;
 +}
 +
 +//USED FOR SKIPPING THE PAGING SYSTEM
@@ -1268,16 +1368,10 @@ index 806b1b1..52edc4d 100644
 +}
 +
 +
-+void FiFoRemove()
-+{
-+
-+}
-+
-+
  struct {
    struct spinlock lock;
    struct proc proc[NPROC];
-@@ -111,7 +242,15 @@ found:
+@@ -111,7 +288,15 @@ found:
    p->context = (struct context*)sp;
    memset(p->context, 0, sizeof *p->context);
    p->context->eip = (uint)forkret;
@@ -1294,7 +1388,34 @@ index 806b1b1..52edc4d 100644
    return p;
  }
  
-@@ -234,6 +373,13 @@ exit(void)
+@@ -174,6 +359,14 @@ growproc(int n)
+   return 0;
+ }
+ 
++
++  // void copy_page_data(struct proc *op, struct proc *np)
++  // {
++  //   int i;
++  //   for(i=0; i <= op->page)
++  // }
++
++
+ // Create a new process copying p as the parent.
+ // Sets up stack to return as if from system call.
+ // Caller must set state of returned proc to RUNNABLE.
+@@ -212,6 +405,11 @@ fork(void)
+ 
+   pid = np->pid;
+ 
++  //copying meta data, page table ds
++  if(curproc->pid > 2) {
++    cprintf("ei id to boro\n");
++  }else cprintf("\nthis id is %d\n\n", curproc->pid);
++
+   acquire(&ptable.lock);
+ 
+   np->state = RUNNABLE;
+@@ -234,6 +432,13 @@ exit(void)
    if(curproc == initproc)
      panic("init exiting");
  
@@ -1308,7 +1429,7 @@ index 806b1b1..52edc4d 100644
    // Close all open files.
    for(fd = 0; fd < NOFILE; fd++){
      if(curproc->ofile[fd]){
-@@ -241,6 +387,12 @@ exit(void)
+@@ -241,6 +446,12 @@ exit(void)
        curproc->ofile[fd] = 0;
      }
    }
@@ -1321,7 +1442,7 @@ index 806b1b1..52edc4d 100644
  
    begin_op();
    iput(curproc->cwd);
-@@ -511,8 +663,11 @@ procdump(void)
+@@ -511,8 +722,11 @@ procdump(void)
    [RUNNING]   "run   ",
    [ZOMBIE]    "zombie"
    };
@@ -1334,7 +1455,7 @@ index 806b1b1..52edc4d 100644
    char *state;
    uint pc[10];
  
-@@ -529,6 +684,41 @@ procdump(void)
+@@ -529,6 +743,41 @@ procdump(void)
        for(i=0; i<10 && pc[i] != 0; i++)
          cprintf(" %p", pc[i]);
      }
@@ -1380,7 +1501,7 @@ index 806b1b1..52edc4d 100644
 +}
 \ No newline at end of file
 diff --git a/proc.h b/proc.h
-index 1647114..882a282 100644
+index 1647114..c96aa9b 100644
 --- a/proc.h
 +++ b/proc.h
 @@ -34,6 +34,20 @@ struct context {
@@ -1420,7 +1541,7 @@ index 1647114..882a282 100644
  };
  
 +//the swapping mechanism
-+void do_the_swap(struct proc *p, uint va);
++int do_the_swap(struct proc *p, uint va);
 +
  // Process memory is laid out contiguously, low addresses first:
  //   text
@@ -1898,7 +2019,7 @@ index 0000000..bfe61b7
 +  return 0;
 +}
 diff --git a/trap.c b/trap.c
-index 41c66eb..e46bc30 100644
+index 41c66eb..8a576d1 100644
 --- a/trap.c
 +++ b/trap.c
 @@ -77,6 +77,12 @@ trap(struct trapframe *tf)
@@ -1908,14 +2029,14 @@ index 41c66eb..e46bc30 100644
 +  case T_PGFLT:{
 +    uint va = rcr2();
 +    struct proc *p = myproc();
-+    do_the_swap(p, va);
-+    break;
++    if(do_the_swap(p, va) == 1)
++      break;
 +  }
  
    //PAGEBREAK: 13
    default:
 diff --git a/vm.c b/vm.c
-index 7134cff..3e7b922 100644
+index 7134cff..7e062da 100644
 --- a/vm.c
 +++ b/vm.c
 @@ -10,6 +10,55 @@
@@ -1982,7 +2103,7 @@ index 7134cff..3e7b922 100644
      if(a == last)
        break;
      a += PGSIZE;
-@@ -244,6 +294,48 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
+@@ -244,6 +294,50 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
        kfree(mem);
        return 0;
      }
@@ -1990,19 +2111,21 @@ index 7134cff..3e7b922 100644
 +    else{ //page made successfully
 +      if(myproc()-> pid > 2) {
 +        struct proc *p = myproc();
-+
++        //cprintf("pid: %p te va bhorbo ekhon: %d\n\n", p->pid, a);
 +        //within MAX_PSYCH_LIMIT
 +        if(p->page_list_last < MAX_PSYCH_PAGES - 1) {
 +          p->page_list_last++;
 +          p->page_list[p->page_list_last].va = PGROUNDDOWN((uint)a);
-+          //cprintf("vpn hochche %d\n", a);
++          //cprintf("vm pid: %d, vpn hochche %d, index: %d\n", p->pid, a, p->page_list_last);
 +        }
 +
 +        else {
++          //cprintf("sf pid: %d, vpn hochche %d\n", p->pid, a);
 +          //get the PTE to be swapped
 +          uint va_2b_swapped = get_va_to_replaced(p); //return "a" aka vpn
++          //cprintf("sf pid: %d, swap hochche %d\n", p->pid, va_2b_swapped);
 +          char *vir_add = (char*)PGROUNDDOWN((uint)va_2b_swapped);
-+          pte_t *pte_ = walkpgdir(pgdir, vir_add, 1);
++          pte_t *pte_ = walkpgdir(pgdir, vir_add, 0);
 +          uint pa = PTE_ADDR(*pte_);
 +
 +          //write contents in SwapFILE
@@ -2031,13 +2154,14 @@ index 7134cff..3e7b922 100644
    }
    return newsz;
  }
-@@ -271,6 +363,10 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
+@@ -271,6 +365,11 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
        if(pa == 0)
          panic("kfree");
        char *v = P2V(pa);
 +      
 +      //remove it from page_list array
-+      remove_page_(myproc(), PGROUNDDOWN((uint)a));
++      if(myproc()->pid > 2)
++        remove_page_(myproc(), PGROUNDDOWN((uint)a));
 +
        kfree(v);
        *pte = 0;
