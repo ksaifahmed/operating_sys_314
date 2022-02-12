@@ -363,11 +363,33 @@ growproc(int n)
 }
 
 
-  // void copy_page_data(struct proc *op, struct proc *np)
-  // {
-  //   int i;
-  //   for(i=0; i <= op->page)
-  // }
+void copy_page_data(struct proc *op, struct proc *np)
+{
+  int i;
+
+  //copying the page list
+  np->page_list_last = op->page_list_last;
+  for(i=0; i <= op->page_list_last; i++){
+    np->page_list[i].va = op->page_list[i].va;
+  }
+
+  //copying the file data
+  np->meta_list_last = op->meta_list_last;
+  np->file_offset = op->file_offset;
+
+  for(i=0; i <= op->meta_list_last; i++){
+    //copy meta data
+    np->meta_list[i].va = op->meta_list[i].va;
+    np->meta_list[i].file_start_idx = op->meta_list[i].file_start_idx;
+
+    //copying swapFile contents
+    char *mem = kalloc();
+    memset(mem, 0, PGSIZE);
+    readFromSwapFile(op, mem, np->meta_list[i].file_start_idx, PGSIZE);
+    writeToSwapFile(np, mem, np->meta_list[i].file_start_idx, PGSIZE);
+  }
+
+}
 
 
 // Create a new process copying p as the parent.
@@ -409,9 +431,10 @@ fork(void)
   pid = np->pid;
 
   //copying meta data, page table ds
-  // if(curproc->pid > 2) {
-  //   cprintf("ei id to boro\n");
-  // }else cprintf("\nthis id is %d\n\n", curproc->pid);
+  if(curproc->pid > 2) {
+    cprintf("fork:\tcopying page data init!\n");
+    copy_page_data(curproc, np);
+  }
 
   acquire(&ptable.lock);
 

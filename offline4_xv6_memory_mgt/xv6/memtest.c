@@ -7,7 +7,7 @@ int main(int argc, char *argv[])
 {
     printf(1, "user code, memtest init\n");
 
-    int size = 4096 * 17, i;
+    int size = 4096 * 18, i;
     int *arr = (int *) malloc(size);
     printf(1, "user code, mem allocated\n");
 
@@ -19,6 +19,7 @@ int main(int argc, char *argv[])
             printf(1, "user code, index: %d, val: %d\n", i, arr[i]);
     }
 
+    free((void *)arr);
     printf(1, "hoise kaaj, user code ending!\n");
 	exit();
 }

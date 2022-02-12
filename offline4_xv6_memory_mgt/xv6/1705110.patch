@@ -1,5 +1,8 @@
+diff --git a/1705110.patch b/1705110.patch
+new file mode 100644
+index 0000000..e69de29
 diff --git a/Makefile b/Makefile
-index 09d790c..52a852d 100644
+index 09d790c..98ebae1 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -51,7 +51,7 @@ TOOLPREFIX := $(shell if i386-jos-elf-objdump -i 2>&1 | grep '^elf32-i386$$' >/d
@@ -11,15 +14,16 @@ index 09d790c..52a852d 100644
  
  # Try to infer the correct QEMU
  ifndef QEMU
-@@ -180,6 +180,7 @@ UPROGS=\
+@@ -180,6 +180,8 @@ UPROGS=\
  	_stressfs\
  	_usertests\
  	_wc\
 +	_memtest\
++	_forkmem\
  	_zombie\
  
  fs.img: mkfs README $(UPROGS)
-@@ -217,7 +218,7 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
+@@ -217,7 +219,7 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
  	then echo "-gdb tcp::$(GDBPORT)"; \
  	else echo "-s -p $(GDBPORT)"; fi)
  ifndef CPUS
@@ -28,12 +32,12 @@ index 09d790c..52a852d 100644
  endif
  QEMUOPTS = -drive file=fs.img,index=1,media=disk,format=raw -drive file=xv6.img,index=0,media=disk,format=raw -smp $(CPUS) -m 512 $(QEMUEXTRA)
  
-@@ -250,7 +251,7 @@ qemu-nox-gdb: fs.img xv6.img .gdbinit
+@@ -250,7 +252,7 @@ qemu-nox-gdb: fs.img xv6.img .gdbinit
  EXTRA=\
  	mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
  	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c zombie.c\
 -	printf.c umalloc.c\
-+	printf.c memtest.c umalloc.c\
++	printf.c memtest.c forkmem.c umalloc.c\
  	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
  	.gdbinit.tmpl gdbutil\
  
@@ -65,6 +69,52 @@ index 82fb982..f33f2cb 100644
  // spinlock.c
  void            acquire(struct spinlock*);
  void            getcallerpcs(void*, uint*);
+diff --git a/forkmem.c b/forkmem.c
+new file mode 100644
+index 0000000..3fcbe82
+--- /dev/null
++++ b/forkmem.c
+@@ -0,0 +1,39 @@
++#include "types.h"
++#include "stat.h"
++#include "user.h"
++
++
++int main(int argc, char *argv[])
++{
++    printf(1, "parent user code, memtest init\n");
++
++    int size = 4096 * 18, i;
++    int *arr = (int *) malloc(size);
++    printf(1, "parent code, mem allocated\n");
++
++    int pid = fork();
++
++    for(i=0; i<size/4; i++)
++    {
++        arr[i] = i * 2;
++        if(i%100 == 0){
++            if(pid == 0)
++                printf(1, "parent code, index: %d, val: %d\n", i, arr[i]);
++            else
++                printf(1, "child code, index: %d, val: %d\n", i, arr[i]);        
++        }
++        sleep(1);
++    }
++
++    free((void *)arr);
++
++    if(pid != 0){
++        wait();
++        printf(1, "hoise kaaj, parent code ending!\n");        
++    }else{
++        printf(1, "hoise kaaj, child code ending!\n");
++    }
++
++
++	exit();
++}
+\ No newline at end of file
 diff --git a/fs.c b/fs.c
 index f77275f..4966e79 100644
 --- a/fs.c
@@ -892,10 +942,10 @@ index 0000000..f77275f
 +}
 diff --git a/memtest.c b/memtest.c
 new file mode 100644
-index 0000000..86fad0b
+index 0000000..67b9342
 --- /dev/null
 +++ b/memtest.c
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,25 @@
 +#include "types.h"
 +#include "stat.h"
 +#include "user.h"
@@ -905,7 +955,7 @@ index 0000000..86fad0b
 +{
 +    printf(1, "user code, memtest init\n");
 +
-+    int size = 4096 * 17, i;
++    int size = 4096 * 18, i;
 +    int *arr = (int *) malloc(size);
 +    printf(1, "user code, mem allocated\n");
 +
@@ -917,6 +967,7 @@ index 0000000..86fad0b
 +            printf(1, "user code, index: %d, val: %d\n", i, arr[i]);
 +    }
 +
++    free((void *)arr);
 +    printf(1, "hoise kaaj, user code ending!\n");
 +	exit();
 +}
@@ -1181,7 +1232,7 @@ index 0000000..54ef2b9
 + {
 +   uint off;
 diff --git a/proc.c b/proc.c
-index 806b1b1..6545b8a 100644
+index 806b1b1..60234c8 100644
 --- a/proc.c
 +++ b/proc.c
 @@ -7,6 +7,186 @@
@@ -1388,34 +1439,57 @@ index 806b1b1..6545b8a 100644
    return p;
  }
  
-@@ -174,6 +362,14 @@ growproc(int n)
+@@ -174,6 +362,36 @@ growproc(int n)
    return 0;
  }
  
 +
-+  // void copy_page_data(struct proc *op, struct proc *np)
-+  // {
-+  //   int i;
-+  //   for(i=0; i <= op->page)
-+  // }
++void copy_page_data(struct proc *op, struct proc *np)
++{
++  int i;
++
++  //copying the page list
++  np->page_list_last = op->page_list_last;
++  for(i=0; i <= op->page_list_last; i++){
++    np->page_list[i].va = op->page_list[i].va;
++  }
++
++  //copying the file data
++  np->meta_list_last = op->meta_list_last;
++  np->file_offset = op->file_offset;
++
++  for(i=0; i <= op->meta_list_last; i++){
++    //copy meta data
++    np->meta_list[i].va = op->meta_list[i].va;
++    np->meta_list[i].file_start_idx = op->meta_list[i].file_start_idx;
++
++    //copying swapFile contents
++    char *mem = kalloc();
++    memset(mem, 0, PGSIZE);
++    readFromSwapFile(op, mem, np->meta_list[i].file_start_idx, PGSIZE);
++    writeToSwapFile(np, mem, np->meta_list[i].file_start_idx, PGSIZE);
++  }
++
++}
 +
 +
  // Create a new process copying p as the parent.
  // Sets up stack to return as if from system call.
  // Caller must set state of returned proc to RUNNABLE.
-@@ -212,6 +408,11 @@ fork(void)
+@@ -212,6 +430,12 @@ fork(void)
  
    pid = np->pid;
  
 +  //copying meta data, page table ds
-+  // if(curproc->pid > 2) {
-+  //   cprintf("ei id to boro\n");
-+  // }else cprintf("\nthis id is %d\n\n", curproc->pid);
++  if(curproc->pid > 2) {
++    cprintf("fork:\tcopying page data init!\n");
++    copy_page_data(curproc, np);
++  }
 +
    acquire(&ptable.lock);
  
    np->state = RUNNABLE;
-@@ -234,6 +435,13 @@ exit(void)
+@@ -234,6 +458,13 @@ exit(void)
    if(curproc == initproc)
      panic("init exiting");
  
@@ -1429,7 +1503,7 @@ index 806b1b1..6545b8a 100644
    // Close all open files.
    for(fd = 0; fd < NOFILE; fd++){
      if(curproc->ofile[fd]){
-@@ -241,6 +449,12 @@ exit(void)
+@@ -241,6 +472,12 @@ exit(void)
        curproc->ofile[fd] = 0;
      }
    }
@@ -1442,7 +1516,7 @@ index 806b1b1..6545b8a 100644
  
    begin_op();
    iput(curproc->cwd);
-@@ -511,8 +725,11 @@ procdump(void)
+@@ -511,8 +748,11 @@ procdump(void)
    [RUNNING]   "run   ",
    [ZOMBIE]    "zombie"
    };
@@ -1455,7 +1529,7 @@ index 806b1b1..6545b8a 100644
    char *state;
    uint pc[10];
  
-@@ -529,6 +746,41 @@ procdump(void)
+@@ -529,6 +769,41 @@ procdump(void)
        for(i=0; i<10 && pc[i] != 0; i++)
          cprintf(" %p", pc[i]);
      }
@@ -2037,7 +2111,7 @@ index 41c66eb..cbf01d1 100644
    //PAGEBREAK: 13
    default:
 diff --git a/vm.c b/vm.c
-index 7134cff..7e062da 100644
+index 7134cff..d89d3a0 100644
 --- a/vm.c
 +++ b/vm.c
 @@ -10,6 +10,55 @@
@@ -2167,3 +2241,13 @@ index 7134cff..7e062da 100644
        kfree(v);
        *pte = 0;
      }
+@@ -325,7 +424,8 @@ copyuvm(pde_t *pgdir, uint sz)
+   for(i = 0; i < sz; i += PGSIZE){
+     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
+       panic("copyuvm: pte should exist");
+-    if(!(*pte & PTE_P))
++    //if((*pte & PTE_PG)) goto bad;
++    if(!(*pte & PTE_P) && !(*pte & PTE_PG))
+       panic("copyuvm: page not present");
+     pa = PTE_ADDR(*pte);
+     flags = PTE_FLAGS(*pte);
