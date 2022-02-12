@@ -11,7 +11,7 @@
 void printCurrentPageList(struct proc *p)
 {
   int i;
-  cprintf("\n============Page List==============\n");
+  cprintf("\n============Page List(%d)==============\n", p->pid);
   for(i=0; i <= p->page_list_last; i++)
   {
     cprintf("index: %d, va: %d\n", i, p->page_list[i].va);
@@ -23,7 +23,7 @@ void printCurrentPageList(struct proc *p)
 void printCurrentFileList(struct proc *p)
 {
   int i;
-  cprintf("\n============File(Meta) List==============\n");
+  cprintf("\n============File/Meta List(%d)==============\n", p->pid);
   for(i=0; i <= p->meta_list_last; i++)
   {
     cprintf("file offset: %d, va: %d\n", p->meta_list[i].file_start_idx, p->meta_list[i].va);
@@ -127,7 +127,7 @@ int do_the_swap(struct proc *p, uint va) //params: process, rcr2()
   for(i=0; i <= p->meta_list_last; i++)
   {
     if(va == p->meta_list[i].va){ //this va is in file!
-      cprintf("va: %d found in file with offset: %d\n", va, p->meta_list[i].file_start_idx);
+      cprintf("[%d] va: %d found in file with offset: %d\n", p->pid, va, p->meta_list[i].file_start_idx);
       //alloc a new page
       char *mem = kalloc();
       memset(mem, 0, PGSIZE);
@@ -141,7 +141,7 @@ int do_the_swap(struct proc *p, uint va) //params: process, rcr2()
 
       //map new page to this page_fault_address va
       mappages(p->pgdir, (char*)va, PGSIZE, V2P(mem), PTE_W|PTE_U);
-      cprintf("va: %d read and mapped to pa: %d\n", va, V2P(mem));
+      cprintf("[%d] va: %d read and mapped to pa: %d\n", p->pid, va, V2P(mem));
       
       //=============================================================
       //get the PTE to be swapped
@@ -151,7 +151,7 @@ int do_the_swap(struct proc *p, uint va) //params: process, rcr2()
 
       //write contents in SwapFILE
       writeToSwapFile(p, P2V(pa), file_offset, PGSIZE);  
-      cprintf("va_to_be_swapped: %d is written to file_offset: %d\n", va_2b_swapped, file_offset);
+      cprintf("[%d] va_to_be_swapped: %d is written to file_offset: %d\n", p->pid, va_2b_swapped, file_offset);
 
       //store meta data 
       p->meta_list_last++;
@@ -164,12 +164,12 @@ int do_the_swap(struct proc *p, uint va) //params: process, rcr2()
 
       //free the page
       kfree(P2V(pa));
-      cprintf("va_to_be_swapped: %d kfree using address: %d\n", va_2b_swapped, P2V(pa));  
+      cprintf("[%d] va_to_be_swapped: %d kfree using address: %d\n", p->pid, va_2b_swapped, P2V(pa));  
 
       //store fault page in page_list
       p->page_list_last++;
       p->page_list[p->page_list_last].va = va;    
-      cprintf("va: %d stored in page_list at index: %d\n\n", va, p->page_list_last);  
+      cprintf("[%d] va: %d stored in page_list at index: %d\n\n", p->pid, va, p->page_list_last);  
       //if(va == 126976) printCurrentFileList(p);
       return 1;
     }

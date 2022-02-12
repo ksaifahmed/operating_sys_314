@@ -1,6 +1,3 @@
-diff --git a/1705110.patch b/1705110.patch
-new file mode 100644
-index 0000000..e69de29
 diff --git a/Makefile b/Makefile
 index 09d790c..98ebae1 100644
 --- a/Makefile
@@ -71,10 +68,10 @@ index 82fb982..f33f2cb 100644
  void            getcallerpcs(void*, uint*);
 diff --git a/forkmem.c b/forkmem.c
 new file mode 100644
-index 0000000..3fcbe82
+index 0000000..c2cd02d
 --- /dev/null
 +++ b/forkmem.c
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,47 @@
 +#include "types.h"
 +#include "stat.h"
 +#include "user.h"
@@ -85,21 +82,29 @@ index 0000000..3fcbe82
 +    printf(1, "parent user code, memtest init\n");
 +
 +    int size = 4096 * 18, i;
-+    int *arr = (int *) malloc(size);
 +    printf(1, "parent code, mem allocated\n");
 +
 +    int pid = fork();
++    int *arr = (int *) malloc(size);
++    //int counter = 0;
 +
 +    for(i=0; i<size/4; i++)
 +    {
 +        arr[i] = i * 2;
 +        if(i%100 == 0){
-+            if(pid == 0)
++            if(pid != 0){
 +                printf(1, "parent code, index: %d, val: %d\n", i, arr[i]);
-+            else
-+                printf(1, "child code, index: %d, val: %d\n", i, arr[i]);        
++                //end parent after 3 turns
++                // counter++;
++                // if(counter == 2){
++                //     break;
++                // }
++            }
++            else{
++                printf(1, "child code, index: %d, val: %d\n", i, arr[i]);      
++            }
 +        }
-+        sleep(1);
++        sleep(2);
 +    }
 +
 +    free((void *)arr);
@@ -1232,7 +1237,7 @@ index 0000000..54ef2b9
 + {
 +   uint off;
 diff --git a/proc.c b/proc.c
-index 806b1b1..60234c8 100644
+index 806b1b1..dad7c84 100644
 --- a/proc.c
 +++ b/proc.c
 @@ -7,6 +7,186 @@
@@ -1243,7 +1248,7 @@ index 806b1b1..60234c8 100644
 +void printCurrentPageList(struct proc *p)
 +{
 +  int i;
-+  cprintf("\n============Page List==============\n");
++  cprintf("\n============Page List(%d)==============\n", p->pid);
 +  for(i=0; i <= p->page_list_last; i++)
 +  {
 +    cprintf("index: %d, va: %d\n", i, p->page_list[i].va);
@@ -1255,7 +1260,7 @@ index 806b1b1..60234c8 100644
 +void printCurrentFileList(struct proc *p)
 +{
 +  int i;
-+  cprintf("\n============File(Meta) List==============\n");
++  cprintf("\n============File/Meta List(%d)==============\n", p->pid);
 +  for(i=0; i <= p->meta_list_last; i++)
 +  {
 +    cprintf("file offset: %d, va: %d\n", p->meta_list[i].file_start_idx, p->meta_list[i].va);
@@ -1359,7 +1364,7 @@ index 806b1b1..60234c8 100644
 +  for(i=0; i <= p->meta_list_last; i++)
 +  {
 +    if(va == p->meta_list[i].va){ //this va is in file!
-+      cprintf("va: %d found in file with offset: %d\n", va, p->meta_list[i].file_start_idx);
++      cprintf("[%d] va: %d found in file with offset: %d\n", p->pid, va, p->meta_list[i].file_start_idx);
 +      //alloc a new page
 +      char *mem = kalloc();
 +      memset(mem, 0, PGSIZE);
@@ -1373,7 +1378,7 @@ index 806b1b1..60234c8 100644
 +
 +      //map new page to this page_fault_address va
 +      mappages(p->pgdir, (char*)va, PGSIZE, V2P(mem), PTE_W|PTE_U);
-+      cprintf("va: %d read and mapped to pa: %d\n", va, V2P(mem));
++      cprintf("[%d] va: %d read and mapped to pa: %d\n", p->pid, va, V2P(mem));
 +      
 +      //=============================================================
 +      //get the PTE to be swapped
@@ -1383,7 +1388,7 @@ index 806b1b1..60234c8 100644
 +
 +      //write contents in SwapFILE
 +      writeToSwapFile(p, P2V(pa), file_offset, PGSIZE);  
-+      cprintf("va_to_be_swapped: %d is written to file_offset: %d\n", va_2b_swapped, file_offset);
++      cprintf("[%d] va_to_be_swapped: %d is written to file_offset: %d\n", p->pid, va_2b_swapped, file_offset);
 +
 +      //store meta data 
 +      p->meta_list_last++;
@@ -1396,12 +1401,12 @@ index 806b1b1..60234c8 100644
 +
 +      //free the page
 +      kfree(P2V(pa));
-+      cprintf("va_to_be_swapped: %d kfree using address: %d\n", va_2b_swapped, P2V(pa));  
++      cprintf("[%d] va_to_be_swapped: %d kfree using address: %d\n", p->pid, va_2b_swapped, P2V(pa));  
 +
 +      //store fault page in page_list
 +      p->page_list_last++;
 +      p->page_list[p->page_list_last].va = va;    
-+      cprintf("va: %d stored in page_list at index: %d\n\n", va, p->page_list_last);  
++      cprintf("[%d] va: %d stored in page_list at index: %d\n\n", p->pid, va, p->page_list_last);  
 +      //if(va == 126976) printCurrentFileList(p);
 +      return 1;
 +    }
