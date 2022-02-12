@@ -23,7 +23,7 @@ void printCurrentPageList(struct proc *p)
 void printCurrentFileList(struct proc *p)
 {
   int i;
-  cprintf("\n============Page List==============\n");
+  cprintf("\n============File(Meta) List==============\n");
   for(i=0; i <= p->meta_list_last; i++)
   {
     cprintf("file offset: %d, va: %d\n", p->meta_list[i].file_start_idx, p->meta_list[i].va);
@@ -106,8 +106,10 @@ uint get_va_to_replace_trap(struct proc *p)
 void remove_meta_(struct proc *p, uint va, int index)
 {
   int j;
-  for(j=index; j < p->meta_list_last; j++)
+  for(j=index; j < p->meta_list_last; j++){
     p->meta_list[j].va = p->meta_list[j+1].va;
+    p->meta_list[j].file_start_idx = p->meta_list[j+1].file_start_idx;
+  }
 
   p->meta_list_last--;
 }
@@ -121,6 +123,7 @@ int do_the_swap(struct proc *p, uint va) //params: process, rcr2()
   va = PTE_ADDR(va);
   cprintf("\nFAULT!!! PID->%d\twants va->%d\n", p->pid, va);
   printCurrentPageList(p);
+  printCurrentFileList(p);
   for(i=0; i <= p->meta_list_last; i++)
   {
     if(va == p->meta_list[i].va){ //this va is in file!
@@ -130,7 +133,8 @@ int do_the_swap(struct proc *p, uint va) //params: process, rcr2()
       memset(mem, 0, PGSIZE);
 
       //read contents from swapFile
-      readFromSwapFile(p, mem, p->meta_list[i].file_start_idx, PGSIZE);
+      uint file_offset = p->meta_list[i].file_start_idx;
+      readFromSwapFile(p, mem, file_offset, PGSIZE);
 
       //remove this meta data from meta_list
       remove_meta_(p, va, i);
@@ -146,14 +150,13 @@ int do_the_swap(struct proc *p, uint va) //params: process, rcr2()
       uint pa = PTE_ADDR(*pte_);
 
       //write contents in SwapFILE
-      writeToSwapFile(p, P2V(pa), p->file_offset, PGSIZE);  
-      cprintf("va_to_be_swapped: %d is written to file_offset: %d\n", va_2b_swapped, p->file_offset);
+      writeToSwapFile(p, P2V(pa), file_offset, PGSIZE);  
+      cprintf("va_to_be_swapped: %d is written to file_offset: %d\n", va_2b_swapped, file_offset);
 
       //store meta data 
       p->meta_list_last++;
       p->meta_list[p->meta_list_last].va = va_2b_swapped;
-      p->meta_list[p->meta_list_last].file_start_idx = p->file_offset;
-      p->file_offset += PGSIZE;    
+      p->meta_list[p->meta_list_last].file_start_idx = file_offset;
 
       //clear the PTE_P flag and set the PTE_PG flag
       *pte_ = *pte_ & ~PTE_P;
@@ -167,10 +170,10 @@ int do_the_swap(struct proc *p, uint va) //params: process, rcr2()
       p->page_list_last++;
       p->page_list[p->page_list_last].va = va;    
       cprintf("va: %d stored in page_list at index: %d\n\n", va, p->page_list_last);  
+      //if(va == 126976) printCurrentFileList(p);
       return 1;
     }
   }
-  printCurrentFileList(p);
   //cprintf("paina page beta!\n\n\n\n");  
   return 0;
 }
@@ -406,9 +409,9 @@ fork(void)
   pid = np->pid;
 
   //copying meta data, page table ds
-  if(curproc->pid > 2) {
-    cprintf("ei id to boro\n");
-  }else cprintf("\nthis id is %d\n\n", curproc->pid);
+  // if(curproc->pid > 2) {
+  //   cprintf("ei id to boro\n");
+  // }else cprintf("\nthis id is %d\n\n", curproc->pid);
 
   acquire(&ptable.lock);
 
